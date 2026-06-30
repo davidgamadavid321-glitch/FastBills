@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Bell, Clock, FileText, Loader2, Plus, Minus, X, User, Tag, Send, ExternalLink,
   Droplets, Zap, Flame, Wifi, Shield, Home, CreditCard,
@@ -16,9 +16,31 @@ const ICONE_MAP = {
   Droplets, Zap, Flame, Wifi, Shield, Home, CreditCard, Building2, Car, Smartphone, Package,
 }
 const ICONE_KEYS = Object.keys(ICONE_MAP)
+const LIMITE_ITENS_PREVIA = 15
 
 
 // ── Helpers ───────────────────────────────────────────────────
+
+function localISODate(date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function somarDiasISO(dataISO, dias) {
+  const [ano, mes, dia] = dataISO.split('-').map(Number)
+  return localISODate(new Date(ano, mes - 1, dia + dias))
+}
+
+function formatarValor(valor) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor ?? 0)
+}
+
+function formatarData(vencimento = '') {
+  const [ano, mes, dia] = vencimento.split('-')
+  return `${dia}/${mes}/${ano}`
+}
 
 function titularAtual(conta) {
   const ativo = conta.contas_titulares?.find(ct => ct.fim === null)
@@ -523,6 +545,140 @@ function SecaoPrazo({ prazo, onChange }) {
   )
 }
 
+// ── Seção: Prévia do aviso ───────────────────────────────────
+
+function LinhaPreviaLancamento({ lancamento, descricao }) {
+  const conta = lancamento.contas
+  const nome = conta?.nome ?? 'Conta sem nome'
+  const imovel = conta?.centros_custo?.nome ?? 'Geral'
+  const titular = conta?.titulares?.nome ?? 'Sem titular'
+
+  return (
+    <div className="py-2 border-t border-slate-100 first:border-t-0 first:pt-0">
+      <div className="flex items-start justify-between gap-3">
+        <p className="min-w-0 text-sm font-semibold text-slate-900 truncate">{nome}</p>
+        <p className="shrink-0 text-sm font-black text-slate-900">{formatarValor(lancamento.valor)}</p>
+      </div>
+      <p className="text-xs text-slate-600 mt-1">{descricao}</p>
+      <div className="mt-1.5 space-y-0.5">
+        <p className="text-xs text-slate-500 truncate">Imóvel: {imovel}</p>
+        <p className="text-xs text-slate-500 truncate">Titular: {titular}</p>
+      </div>
+    </div>
+  )
+}
+
+function montarGrupoPrevia({ titulo, lancamentos, criarDescricao, restante }) {
+  if (lancamentos.length === 0 || restante <= 0) return { elemento: null, usados: 0 }
+
+  const visiveis = lancamentos.slice(0, restante)
+  return {
+    usados: visiveis.length,
+    elemento: (
+      <div className="space-y-2" key={titulo}>
+        <h3 className="text-sm font-black text-slate-900">{titulo}</h3>
+        <div className="rounded-xl bg-white border border-slate-100 p-3">
+          {visiveis.map(lancamento => (
+            <LinhaPreviaLancamento
+              key={lancamento.id}
+              lancamento={lancamento}
+              descricao={criarDescricao(lancamento)}
+            />
+          ))}
+        </div>
+      </div>
+    ),
+  }
+}
+
+function SecaoPreviaAviso({ lancamentos, loading }) {
+  const hoje = useMemo(() => localISODate(new Date()), [])
+
+  const { grupos, total, ocultos } = useMemo(() => {
+    const vencidas = lancamentos.filter(l => l.vencimento < hoje)
+    const hojeLista = lancamentos.filter(l => l.vencimento === hoje)
+    const proximas = lancamentos.filter(l => l.vencimento > hoje)
+
+    let usados = 0
+    const elementos = []
+
+    function adicionarGrupo(config) {
+      const secao = montarGrupoPrevia({
+        ...config,
+        restante: LIMITE_ITENS_PREVIA - usados,
+      })
+      if (secao.elemento) elementos.push(secao.elemento)
+      usados += secao.usados
+    }
+
+    adicionarGrupo({
+      titulo: '🔴 Vencidas',
+      lancamentos: vencidas,
+      criarDescricao: l => `Venceu em ${formatarData(l.vencimento)}`,
+    })
+    adicionarGrupo({
+      titulo: '🟡 Vencem hoje',
+      lancamentos: hojeLista,
+      criarDescricao: () => 'Vence hoje',
+    })
+    adicionarGrupo({
+      titulo: '🟢 Próximas',
+      lancamentos: proximas,
+      criarDescricao: l => `Vence em ${formatarData(l.vencimento)}`,
+    })
+
+    return {
+      grupos: elementos,
+      total: lancamentos.length,
+      ocultos: Math.max(0, lancamentos.length - usados),
+    }
+  }, [lancamentos, hoje])
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+      <SecaoHeader
+        icon={Send}
+        titulo="Prévia do aviso"
+        descricao="Aproximação visual da mensagem enviada pelo Telegram"
+      />
+
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <Loader2 size={16} className="animate-spin text-slate-300" />
+        </div>
+      ) : total === 0 ? (
+        <div className="rounded-xl bg-slate-50 border border-slate-100 p-4 space-y-2">
+          <p className="text-sm font-black text-slate-900">✅ Tudo certo por aqui!</p>
+          <p className="text-sm text-slate-600">Nenhuma conta pendente encontrada para este aviso.</p>
+        </div>
+      ) : (
+        <div className="rounded-xl bg-slate-50 border border-slate-100 p-4 space-y-4">
+          <div>
+            <p className="text-sm font-black text-slate-900">
+              🔔 Bom dia! Aqui está seu resumo de contas
+            </p>
+            <p className="text-sm text-slate-600 mt-2">
+              Você tem {total} conta(s) para acompanhar:
+            </p>
+          </div>
+
+          {grupos}
+
+          {ocultos > 0 && (
+            <p className="text-xs font-semibold text-slate-500">
+              + {ocultos} conta(s) pendente(s) no sistema.
+            </p>
+          )}
+
+          <p className="text-xs text-slate-500">
+            Acesse o sistema para marcar pagamentos e anexar comprovantes.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Página principal ──────────────────────────────────────────
 
 export default function Avisos() {
@@ -538,6 +694,8 @@ export default function Avisos() {
 
   const [contasAFazer,      setContasAFazer]       = useState([])
   const [loadingContas,     setLoadingContas]      = useState(true)
+  const [lancamentosPrevia, setLancamentosPrevia]  = useState([])
+  const [loadingPrevia,     setLoadingPrevia]      = useState(true)
 
   const prazoTimerRef = useRef(null)
 
@@ -616,6 +774,33 @@ export default function Avisos() {
       })
   }, [workspaceId, loadingWorkspace, erroWorkspace])
 
+  useEffect(() => {
+    if (loadingWorkspace || erroWorkspace || loadingCfg || !workspaceId) return
+
+    const hoje = localISODate(new Date())
+    const limite = somarDiasISO(hoje, prazo)
+
+    setLoadingPrevia(true)
+    supabase
+      .from('lancamentos')
+      .select(`
+        id, valor, vencimento, status,
+        contas:contas!lancamentos_workspace_conta_fkey(
+          nome,
+          centros_custo:centros_custo!contas_workspace_centro_fkey(nome),
+          titulares:titulares!contas_workspace_titular_fkey(nome)
+        )
+      `)
+      .eq('workspace_id', workspaceId)
+      .neq('status', 'pago')
+      .lte('vencimento', limite)
+      .order('vencimento')
+      .then(({ data }) => {
+        setLancamentosPrevia(data ?? [])
+        setLoadingPrevia(false)
+      })
+  }, [workspaceId, loadingWorkspace, erroWorkspace, loadingCfg, prazo])
+
   function handlePrazoChange(novo) {
     const clamped = Math.max(1, Math.min(30, novo))
     setPrazo(clamped)
@@ -646,6 +831,7 @@ export default function Avisos() {
         <SecaoTitulares titulares={titulares} setTitulares={setTitulares} />
         <SecaoTelegram />
         <SecaoPrazo prazo={prazo} onChange={handlePrazoChange} />
+        <SecaoPreviaAviso lancamentos={lancamentosPrevia} loading={loadingPrevia} />
       </div>
 
       {/* ── Coluna direita: categorias + histórico + contas a fazer ── */}
