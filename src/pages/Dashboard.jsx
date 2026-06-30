@@ -22,14 +22,6 @@ function localISODate(date) {
   return `${y}-${m}-${d}`
 }
 
-function abreviar(nome = '') {
-  return nome
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .slice(0, 3)
-    .toUpperCase()
-}
-
 function formatarValor(valor) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor ?? 0)
 }
@@ -76,25 +68,11 @@ function titularIdDoConta(conta) {
 
 // ── Mapas de estilo ──────────────────────────────────────────
 
-const DIA_BORDA = {
-  vencido: 'border-red-400',
-  hoje: 'border-amber-400',
-  pendente: 'border-slate-300',
-  pago: 'border-green-300',
-}
-
-const DIA_FUNDO = {
-  vencido: 'bg-red-50',
-  hoje: 'bg-amber-50',
-  pendente: '',
-  pago: '',
-}
-
-const TAG_COR = {
-  vencido: 'bg-red-100 text-red-700',
-  hoje: 'bg-amber-100 text-amber-800',
-  pendente: 'bg-slate-100 text-slate-600',
-  pago: 'bg-green-100 text-green-700',
+const DIA_STATUS = {
+  vencido: 'border-red-200 bg-red-50/80',
+  hoje: 'border-amber-200 bg-amber-50/80',
+  pendente: 'border-slate-200 bg-slate-50',
+  pago: 'border-green-200 bg-green-50/70',
 }
 
 const BADGE_COR = {
@@ -108,84 +86,92 @@ const STATUS_LABEL = { pago: 'Pago', vencido: 'Vencido', hoje: 'Vence hoje', pen
 
 // ── Sub-componentes ──────────────────────────────────────────
 
-function TagConta({ lancamento, selecionado, hoje }) {
+function MiniLancamentoDia({ lancamento, selecionado, hoje }) {
   const s = statusEfetivo(lancamento.vencimento, lancamento.status, hoje)
-  const label = abreviar(lancamento.contas?.nome)
   const cor = titularDoConta(lancamento.contas)?.cor
-
-  if (selecionado) {
-    return (
-      <span className="px-1 py-0.5 rounded text-[10px] font-bold bg-white/20 text-white leading-none">
-        {label}
-      </span>
-    )
-  }
-
-  if (cor) {
-    return (
-      <span
-        className="px-1 py-0.5 rounded text-[10px] font-bold text-white leading-none"
-        style={{ backgroundColor: cor }}
-      >
-        {label}
-      </span>
-    )
-  }
+  const nome = lancamento.contas?.nome ?? 'Conta'
 
   return (
-    <span className={`px-1 py-0.5 rounded text-[10px] font-bold leading-none ${TAG_COR[s]}`}>
-      {label}
-    </span>
+    <div
+      className={`min-w-0 rounded-lg px-1.5 py-1 border ${
+        selecionado
+          ? 'bg-white/15 border-white/20 text-white'
+          : 'bg-white/85 border-black/5 text-slate-700'
+      }`}
+      style={!selecionado && cor ? { borderLeftColor: cor, borderLeftWidth: 3 } : undefined}
+      title={`${nome} - ${formatarValor(lancamento.valor)}`}
+    >
+      <div className="flex items-center justify-between gap-1 min-w-0">
+        <span className="text-[10px] sm:text-[11px] font-semibold truncate min-w-0">
+          {nome}
+        </span>
+        <span
+          className={`hidden sm:inline text-[10px] font-bold shrink-0 ${
+            selecionado ? 'text-white' : s === 'vencido' ? 'text-red-700' : 'text-slate-900'
+          }`}
+        >
+          {formatarValor(lancamento.valor)}
+        </span>
+      </div>
+    </div>
   )
 }
 
 function DiaCell({ dia, lancamentos, selecionado, ehHoje, hoje, onClick }) {
-  if (dia === null) return <div />
+  if (dia === null) return <div className="min-h-[74px] sm:min-h-[108px] rounded-xl border border-transparent" />
 
   const temContas = lancamentos.length > 0
   const pior = temContas ? piorStatusDia(lancamentos, hoje) : null
-  const visiveis = lancamentos.slice(0, 3)
-  const excedente = lancamentos.length - 3
+  const visiveis = lancamentos.slice(0, 2)
+  const excedente = lancamentos.length - visiveis.length
 
-  const borda = selecionado
-    ? 'border-slate-900'
+  const estado = selecionado
+    ? 'border-slate-900 bg-slate-900 shadow-sm'
     : pior
-    ? DIA_BORDA[pior]
+    ? DIA_STATUS[pior]
     : ehHoje
-    ? 'border-blue-200'
-    : 'border-slate-100'
-
-  const fundo = selecionado
-    ? 'bg-slate-900'
-    : pior
-    ? DIA_FUNDO[pior]
-    : ehHoje
-    ? 'bg-blue-50'
-    : 'hover:border-slate-200'
+    ? 'border-blue-200 bg-blue-50'
+    : 'border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50'
 
   return (
     <div
-      className={`rounded-2xl border p-1.5 min-h-[72px] cursor-pointer transition-colors select-none flex flex-col gap-1 ${borda} ${fundo}`}
+      className={`rounded-xl sm:rounded-2xl border p-1.5 sm:p-2 min-h-[74px] sm:min-h-[108px] cursor-pointer transition-all select-none flex flex-col gap-1.5 ${estado}`}
       onClick={() => onClick(dia, temContas)}
     >
-      <span
-        className={`text-xs font-black leading-none ${
-          selecionado ? 'text-white' : ehHoje ? 'text-blue-600' : 'text-slate-700'
-        }`}
-      >
-        {dia}
-      </span>
-      <div className="flex flex-wrap gap-0.5">
+      <div className="flex items-center justify-between gap-1">
+        <span
+          className={`h-5 min-w-5 px-1.5 rounded-full text-xs font-black leading-5 text-center ${
+            selecionado
+              ? 'bg-white text-slate-900'
+              : ehHoje
+              ? 'bg-blue-600 text-white'
+              : 'text-slate-700'
+          }`}
+        >
+          {dia}
+        </span>
+        {temContas && (
+          <span
+            className={`text-[10px] font-bold leading-none ${
+              selecionado ? 'text-white/70' : 'text-slate-400'
+            }`}
+          >
+            {lancamentos.length}
+          </span>
+        )}
+      </div>
+
+      <div className="min-w-0 space-y-1">
         {visiveis.map(l => (
-          <TagConta key={l.id} lancamento={l} selecionado={selecionado} hoje={hoje} />
+          <MiniLancamentoDia key={l.id} lancamento={l} selecionado={selecionado} hoje={hoje} />
         ))}
         {excedente > 0 && (
           <span
-            className={`text-[10px] font-medium leading-none mt-0.5 ${
-              selecionado ? 'text-white/60' : 'text-slate-400'
+            className={`block text-[10px] font-semibold leading-none px-1 ${
+              selecionado ? 'text-white/65' : 'text-slate-500'
             }`}
           >
-            +{excedente}
+            + {excedente} conta{excedente > 1 ? 's' : ''}
           </span>
         )}
       </div>
@@ -541,24 +527,35 @@ export default function Dashboard() {
       <div className="flex gap-4 items-start">
 
         {/* Calendário */}
-        <div className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-200 p-4">
+        <div className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm">
 
           {/* Navegação de mês */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                Calendário
+              </p>
+              <h2 className="text-lg font-black text-slate-900 leading-tight">
+                {NOMES_MESES[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+              </h2>
+            </div>
+
+            <div className="flex items-center justify-between sm:justify-end gap-2">
             <button
               onClick={() => setCurrentMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
-              className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+              className="h-9 w-9 border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors flex items-center justify-center shrink-0"
+              title="Mês anterior"
             >
               <ChevronLeft size={17} className="text-slate-600" />
             </button>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               {/* Select de mês */}
               <div className="relative">
                 <select
                   value={currentMonth.getMonth()}
                   onChange={e => setCurrentMonth(d => new Date(d.getFullYear(), parseInt(e.target.value), 1))}
-                  className="appearance-none cursor-pointer border border-slate-200 rounded-xl pl-3 pr-7 py-1.5 text-sm font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition"
+                  className="appearance-none cursor-pointer border border-slate-200 rounded-xl pl-3 pr-7 py-2 text-sm font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition max-w-[136px]"
                 >
                   {NOMES_MESES.map((nome, i) => (
                     <option key={i} value={i}>{nome}</option>
@@ -572,7 +569,7 @@ export default function Dashboard() {
                 <select
                   value={currentMonth.getFullYear()}
                   onChange={e => setCurrentMonth(d => new Date(parseInt(e.target.value), d.getMonth(), 1))}
-                  className="appearance-none cursor-pointer border border-slate-200 rounded-xl pl-3 pr-7 py-1.5 text-sm font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition"
+                  className="appearance-none cursor-pointer border border-slate-200 rounded-xl pl-3 pr-7 py-2 text-sm font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition"
                 >
                   {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(ano => (
                     <option key={ano} value={ano}>{ano}</option>
@@ -584,16 +581,18 @@ export default function Dashboard() {
 
             <button
               onClick={() => setCurrentMonth(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
-              className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+              className="h-9 w-9 border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors flex items-center justify-center shrink-0"
+              title="Próximo mês"
             >
               <ChevronRight size={17} className="text-slate-600" />
             </button>
+            </div>
           </div>
 
           {/* Cabeçalho dos dias da semana */}
-          <div className="grid grid-cols-7 gap-1 mb-1">
+          <div className="grid grid-cols-7 gap-1.5 mb-1.5">
             {DIAS_SEMANA.map(d => (
-              <p key={d} className="text-center text-[11px] font-semibold text-slate-400 py-1">
+              <p key={d} className="text-center text-[10px] sm:text-[11px] font-bold text-slate-400 py-1">
                 {d}
               </p>
             ))}
@@ -605,7 +604,7 @@ export default function Dashboard() {
               <span className="text-slate-400 text-sm">Carregando...</span>
             </div>
           ) : (
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid grid-cols-7 gap-1.5">
               {grid.map((dia, idx) => (
                 <DiaCell
                   key={idx}
