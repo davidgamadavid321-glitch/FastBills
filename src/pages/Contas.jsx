@@ -22,6 +22,40 @@ const RECORRENCIA_LABEL = {
 const FILTRO_TODOS = 'todos'
 const FILTRO_GERAL = 'geral'
 const FILTRO_SEM_TITULAR = 'sem_titular'
+const DIAS_PROXIMAS = 7
+
+const GRUPOS_VENCIMENTO = [
+  {
+    chave: 'vencidas',
+    titulo: '🔴 Vencidas',
+    descricao: 'Contas com vencimento anterior a hoje',
+    classe: 'border-red-200 bg-red-50/70',
+  },
+  {
+    chave: 'hoje',
+    titulo: '🟡 Vencem hoje',
+    descricao: 'Prioridade do dia',
+    classe: 'border-amber-200 bg-amber-50/70',
+  },
+  {
+    chave: 'proximas',
+    titulo: '🟢 Próximas',
+    descricao: `Vencem em até ${DIAS_PROXIMAS} dias`,
+    classe: 'border-green-200 bg-green-50/60',
+  },
+  {
+    chave: 'futuras',
+    titulo: '⚪ Futuras',
+    descricao: 'Vencimentos depois desse período',
+    classe: 'border-slate-200 bg-white',
+  },
+  {
+    chave: 'pagas',
+    titulo: '✅ Pagas',
+    descricao: 'Contas já pagas no vencimento atual',
+    classe: 'border-green-200 bg-green-50/60',
+  },
+]
 
 // Retorna o titular atual: registro ativo em contas_titulares (fim IS NULL),
 // com fallback para o titular_id direto da conta.
@@ -45,6 +79,50 @@ function normalizarBusca(valor) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
+}
+
+function somarDiasISO(dataISO, dias) {
+  const [ano, mes, dia] = dataISO.split('-').map(Number)
+  return localISODate(new Date(ano, mes - 1, dia + dias))
+}
+
+function dataVencimentoReferencia(conta, hojeISO) {
+  const dia = Number(conta.dia_vencimento)
+  if (!Number.isInteger(dia) || dia < 1 || dia > 31) return ''
+
+  const [anoAtual, mesAtual] = hojeISO.split('-').map(Number)
+  const mesReferencia = conta.recorrencia === 'anual' && conta.mes_vencimento
+    ? Number(conta.mes_vencimento)
+    : mesAtual
+
+  if (!Number.isInteger(mesReferencia) || mesReferencia < 1 || mesReferencia > 12) return ''
+  return localISODate(new Date(anoAtual, mesReferencia - 1, dia))
+}
+
+function chaveLancamento(contaId, vencimento) {
+  return `${contaId}:${vencimento}`
+}
+
+function grupoVencimentoConta(conta, hojeISO, lancamentosPorContaVencimento) {
+  const vencimento = dataVencimentoReferencia(conta, hojeISO)
+  if (!vencimento) return { grupo: 'futuras', vencimento: '9999-12-31' }
+
+  const lancamento = lancamentosPorContaVencimento.get(chaveLancamento(conta.id, vencimento))
+  if (lancamento?.status === 'pago') return { grupo: 'pagas', vencimento }
+
+  if (vencimento < hojeISO) return { grupo: 'vencidas', vencimento }
+  if (vencimento === hojeISO) return { grupo: 'hoje', vencimento }
+  if (vencimento <= somarDiasISO(hojeISO, DIAS_PROXIMAS)) return { grupo: 'proximas', vencimento }
+  return { grupo: 'futuras', vencimento }
+}
+
+function ordenarPorVencimento(a, b, hojeISO) {
+  const vencimentoA = dataVencimentoReferencia(a, hojeISO)
+  const vencimentoB = dataVencimentoReferencia(b, hojeISO)
+  return (
+    vencimentoA.localeCompare(vencimentoB)
+    || (a.nome ?? '').localeCompare(b.nome ?? '')
+  )
 }
 
 // ── Sub-componentes ──────────────────────────────────────────
@@ -189,6 +267,48 @@ function CardConta({
   )
 }
 
+function SecaoGrupoContas({
+  grupo,
+  contas,
+  modoSelecao,
+  contasSelecionadas,
+  onSelecionar,
+  onEditar,
+  onExcluir,
+  onVerLancamentos,
+}) {
+  if (contas.length === 0) return null
+
+  return (
+    <section className={`rounded-2xl border p-3 sm:p-4 space-y-3 ${grupo.classe}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-black text-slate-900">{grupo.titulo}</h2>
+          <p className="text-xs text-slate-500 mt-0.5">{grupo.descricao}</p>
+        </div>
+        <span className="shrink-0 text-[11px] font-bold text-slate-600 bg-white/80 border border-black/5 rounded-full px-2 py-1">
+          {contas.length}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {contas.map(conta => (
+          <CardConta
+            key={conta.id}
+            conta={conta}
+            modoSelecao={modoSelecao}
+            selecionada={contasSelecionadas.has(conta.id)}
+            onSelecionar={onSelecionar}
+            onEditar={() => onEditar(conta)}
+            onExcluir={() => onExcluir(conta)}
+            onVerLancamentos={() => onVerLancamentos(conta)}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
 // ── Página principal ─────────────────────────────────────────
 
 export default function Contas() {
@@ -200,6 +320,7 @@ export default function Contas() {
   const [titulares, setTitulares]       = useState([])
   const [centrosCusto, setCentrosCusto] = useState([])
   const [categorias, setCategorias]     = useState([])
+  const [lancamentos, setLancamentos]   = useState([])
   const [loading, setLoading]           = useState(true)
 
   // Filtros — pré-preenche centro se vindo de Imóveis
@@ -230,6 +351,7 @@ export default function Contas() {
       { data: ts },
       { data: ccs },
       { data: cats },
+      { data: lancs },
     ] = await Promise.all([
       supabase.from('contas').select(`
         *,
@@ -244,11 +366,16 @@ export default function Contas() {
       supabase.from('titulares').select('*').eq('workspace_id', workspaceId).order('nome'),
       supabase.from('centros_custo').select('*').eq('workspace_id', workspaceId).order('nome'),
       supabase.from('categorias').select('*').eq('workspace_id', workspaceId).order('nome'),
+      supabase
+        .from('lancamentos')
+        .select('id, conta_id, vencimento, status')
+        .eq('workspace_id', workspaceId),
     ])
     setContas(cs ?? [])
     setTitulares(ts ?? [])
     setCentrosCusto(ccs ?? [])
     setCategorias(cats ?? [])
+    setLancamentos(lancs ?? [])
     setLoading(false)
   }, [workspaceId, loadingWorkspace, erroWorkspace])
 
@@ -285,6 +412,39 @@ export default function Contas() {
       return true
     })
   }, [contas, busca, filtroTitular, filtroCentro, filtroCategoria, filtroRecorrencia, filtroStatus])
+
+  const hojeISO = useMemo(() => localISODate(new Date()), [])
+
+  const lancamentosPorContaVencimento = useMemo(() => {
+    const map = new Map()
+    lancamentos.forEach(lancamento => {
+      if (lancamento.conta_id && lancamento.vencimento) {
+        map.set(chaveLancamento(lancamento.conta_id, lancamento.vencimento), lancamento)
+      }
+    })
+    return map
+  }, [lancamentos])
+
+  const contasAgrupadas = useMemo(() => {
+    const inicial = {
+      vencidas: [],
+      hoje: [],
+      proximas: [],
+      futuras: [],
+      pagas: [],
+    }
+
+    contasFiltradas.forEach(conta => {
+      const { grupo } = grupoVencimentoConta(conta, hojeISO, lancamentosPorContaVencimento)
+      inicial[grupo].push(conta)
+    })
+
+    Object.keys(inicial).forEach(grupo => {
+      inicial[grupo].sort((a, b) => ordenarPorVencimento(a, b, hojeISO))
+    })
+
+    return inicial
+  }, [contasFiltradas, hojeISO, lancamentosPorContaVencimento])
 
   const filtrosAtivos = (
     busca.trim() !== ''
@@ -610,23 +770,24 @@ export default function Contas() {
         )}
       </div>
 
-      {/* Lista de cards */}
+      {/* Lista de cards agrupada por vencimento */}
       {contasFiltradas.length === 0 ? (
         <div className="flex items-center justify-center py-16">
           <p className="text-sm text-slate-400">Nenhuma conta encontrada.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {contasFiltradas.map(conta => (
-            <CardConta
-              key={conta.id}
-              conta={conta}
+        <div className="space-y-4">
+          {GRUPOS_VENCIMENTO.map(grupo => (
+            <SecaoGrupoContas
+              key={grupo.chave}
+              grupo={grupo}
+              contas={contasAgrupadas[grupo.chave]}
               modoSelecao={modoSelecao}
-              selecionada={contasSelecionadas.has(conta.id)}
+              contasSelecionadas={contasSelecionadas}
               onSelecionar={toggleSelecionarConta}
-              onEditar={() => setModalEdicao(conta)}
-              onExcluir={() => { setErroExcluir(''); setConfirmExcluir(conta) }}
-              onVerLancamentos={() => navigate('/', { state: { contaId: conta.id } })}
+              onEditar={setModalEdicao}
+              onExcluir={(conta) => { setErroExcluir(''); setConfirmExcluir(conta) }}
+              onVerLancamentos={(conta) => navigate('/', { state: { contaId: conta.id } })}
             />
           ))}
         </div>
