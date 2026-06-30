@@ -125,6 +125,19 @@ function ordenarPorVencimento(a, b, hojeISO) {
   )
 }
 
+function dadosCentroConta(conta) {
+  const vinculada = Boolean(conta.centro_id)
+  return {
+    badge: vinculada ? 'Imóvel' : 'Geral',
+    nome: vinculada
+      ? (conta.centros_custo?.nome ?? 'Imóvel não identificado')
+      : 'Sem imóvel',
+    badgeClass: vinculada
+      ? 'bg-slate-900 text-white'
+      : 'bg-slate-100 text-slate-600 border border-slate-200',
+  }
+}
+
 // ── Sub-componentes ──────────────────────────────────────────
 
 function MenuBtn({ label, onClick, danger }) {
@@ -154,6 +167,7 @@ function CardConta({
   const isAtivo = conta.status_contrato === 'ativo'
   const titular = titularAtual(conta)
   const cor = titular?.cor
+  const centro = dadosCentroConta(conta)
 
   useEffect(() => {
     if (!menuAberto) return
@@ -242,9 +256,14 @@ function CardConta({
       <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 pt-3 border-t border-slate-100">
         <div>
           <p className="text-[11px] text-slate-400 font-medium">Centro de custo</p>
-          <p className="text-xs text-slate-700 font-semibold truncate mt-0.5">
-            {conta.centros_custo?.nome ?? 'Geral'}
-          </p>
+          <div className="mt-1 flex items-center gap-1.5 min-w-0">
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold leading-none ${centro.badgeClass}`}>
+              {centro.badge}
+            </span>
+            <span className="min-w-0 truncate text-xs text-slate-700 font-semibold">
+              {centro.nome}
+            </span>
+          </div>
         </div>
         <div>
           <p className="text-[11px] text-slate-400 font-medium">Recorrência</p>
