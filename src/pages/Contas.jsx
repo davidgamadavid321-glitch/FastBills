@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Plus, MoreVertical, Loader2, Tag, Trash2 } from 'lucide-react'
+import { Plus, MoreVertical, Loader2, Tag, Trash2, Search } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import * as LucideIcons from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -19,6 +19,10 @@ const RECORRENCIA_LABEL = {
   anual:   'Anual',
 }
 
+const FILTRO_TODOS = 'todos'
+const FILTRO_GERAL = 'geral'
+const FILTRO_SEM_TITULAR = 'sem_titular'
+
 // Retorna o titular atual: registro ativo em contas_titulares (fim IS NULL),
 // com fallback para o titular_id direto da conta.
 function titularAtual(conta) {
@@ -33,6 +37,14 @@ function IconeLucide({ nome, ...props }) {
 
 function registrarErroDesenvolvimento(contexto, error) {
   if (import.meta.env.DEV) console.error(contexto, error)
+}
+
+function normalizarBusca(valor) {
+  return String(valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
 }
 
 // ── Sub-componentes ──────────────────────────────────────────
@@ -191,10 +203,12 @@ export default function Contas() {
   const [loading, setLoading]           = useState(true)
 
   // Filtros — pré-preenche centro se vindo de Imóveis
-  const [filtroTitular,     setFiltroTitular]     = useState('')
-  const [filtroCentro,      setFiltroCentro]      = useState(location.state?.centroId ?? '')
-  const [filtroRecorrencia, setFiltroRecorrencia] = useState('')
-  const [filtroStatus,      setFiltroStatus]      = useState('')
+  const [busca,             setBusca]             = useState('')
+  const [filtroTitular,     setFiltroTitular]     = useState(FILTRO_TODOS)
+  const [filtroCentro,      setFiltroCentro]      = useState(location.state?.centroId ?? FILTRO_TODOS)
+  const [filtroCategoria,   setFiltroCategoria]   = useState(FILTRO_TODOS)
+  const [filtroRecorrencia, setFiltroRecorrencia] = useState(FILTRO_TODOS)
+  const [filtroStatus,      setFiltroStatus]      = useState(FILTRO_TODOS)
 
   // Modais / ações
   const [modalCadastro,  setModalCadastro]  = useState(false)
@@ -242,20 +256,55 @@ export default function Contas() {
 
   // Filtros em tempo real
   const contasFiltradas = useMemo(() => {
+    const termo = normalizarBusca(busca)
+
     return contas.filter(c => {
-      if (filtroTitular) {
+      if (termo && !normalizarBusca(c.nome).includes(termo)) return false
+
+      if (filtroTitular !== FILTRO_TODOS) {
         const ctAtivo = c.contas_titulares?.find(ct => ct.fim === null)
         const idAtual = ctAtivo?.titular_id ?? c.titular_id
-        if (idAtual !== filtroTitular) return false
+        if (filtroTitular === FILTRO_SEM_TITULAR) {
+          if (idAtual) return false
+        } else if (idAtual !== filtroTitular) {
+          return false
+        }
       }
-      if (filtroCentro      && c.centro_id    !== filtroCentro)      return false
-      if (filtroRecorrencia && c.recorrencia  !== filtroRecorrencia) return false
-      if (filtroStatus      && c.status_contrato !== filtroStatus)   return false
+
+      if (filtroCentro !== FILTRO_TODOS) {
+        if (filtroCentro === FILTRO_GERAL) {
+          if (c.centro_id) return false
+        } else if (c.centro_id !== filtroCentro) {
+          return false
+        }
+      }
+
+      if (filtroCategoria !== FILTRO_TODOS && c.categoria_id !== filtroCategoria) return false
+      if (filtroRecorrencia !== FILTRO_TODOS && c.recorrencia !== filtroRecorrencia) return false
+      if (filtroStatus !== FILTRO_TODOS && c.status_contrato !== filtroStatus) return false
       return true
     })
-  }, [contas, filtroTitular, filtroCentro, filtroRecorrencia, filtroStatus])
+  }, [contas, busca, filtroTitular, filtroCentro, filtroCategoria, filtroRecorrencia, filtroStatus])
+
+  const filtrosAtivos = (
+    busca.trim() !== ''
+    || filtroCentro !== FILTRO_TODOS
+    || filtroTitular !== FILTRO_TODOS
+    || filtroCategoria !== FILTRO_TODOS
+    || filtroStatus !== FILTRO_TODOS
+    || filtroRecorrencia !== FILTRO_TODOS
+  )
 
   // ── Handlers ──
+
+  function limparFiltros() {
+    setBusca('')
+    setFiltroCentro(FILTRO_TODOS)
+    setFiltroTitular(FILTRO_TODOS)
+    setFiltroCategoria(FILTRO_TODOS)
+    setFiltroStatus(FILTRO_TODOS)
+    setFiltroRecorrencia(FILTRO_TODOS)
+  }
 
   function handleContaSalva(data) {
     setContas(prev => {
@@ -393,6 +442,8 @@ export default function Contas() {
 
   const selectClass =
     'w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition'
+  const inputClass =
+    'w-full border border-slate-300 rounded-xl py-2.5 pl-9 pr-4 text-sm text-slate-700 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 transition'
 
   return (
     <div className="space-y-4">
@@ -413,44 +464,88 @@ export default function Contas() {
       </div>
 
       {/* Filtros */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-        <div className="space-y-1">
-          <label className="text-xs font-semibold text-slate-500">Titular</label>
-          <select value={filtroTitular} onChange={e => setFiltroTitular(e.target.value)} className={selectClass}>
-            <option value="">Todos</option>
-            {titulares.map(t => (
-              <option key={t.id} value={t.id}>{t.nome}</option>
-            ))}
-          </select>
+      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <p className="text-sm font-bold text-slate-900">Filtros</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {contasFiltradas.length} {contasFiltradas.length === 1 ? 'conta encontrada' : 'contas encontradas'}
+            </p>
+          </div>
+          <button
+            onClick={limparFiltros}
+            disabled={!filtrosAtivos}
+            className="self-start sm:self-auto px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+          >
+            Limpar filtros
+          </button>
         </div>
 
-        <div className="space-y-1">
-          <label className="text-xs font-semibold text-slate-500">Imóvel</label>
-          <select value={filtroCentro} onChange={e => setFiltroCentro(e.target.value)} className={selectClass}>
-            <option value="">Todos</option>
-            {centrosCusto.map(c => (
-              <option key={c.id} value={c.id}>{c.nome}</option>
-            ))}
-          </select>
-        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="space-y-1 sm:col-span-2 lg:col-span-3">
+            <label className="text-xs font-semibold text-slate-500">Buscar conta</label>
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={busca}
+                onChange={e => setBusca(e.target.value)}
+                placeholder="Buscar por nome"
+                className={inputClass}
+              />
+            </div>
+          </div>
 
-        <div className="space-y-1">
-          <label className="text-xs font-semibold text-slate-500">Recorrência</label>
-          <select value={filtroRecorrencia} onChange={e => setFiltroRecorrencia(e.target.value)} className={selectClass}>
-            <option value="">Todas</option>
-            <option value="uma_vez">Uma vez</option>
-            <option value="mensal">Mensal</option>
-            <option value="anual">Anual</option>
-          </select>
-        </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-500">Imóvel</label>
+            <select value={filtroCentro} onChange={e => setFiltroCentro(e.target.value)} className={selectClass}>
+              <option value={FILTRO_TODOS}>Todos</option>
+              <option value={FILTRO_GERAL}>Geral / Sem imóvel</option>
+              {centrosCusto.map(c => (
+                <option key={c.id} value={c.id}>{c.nome}</option>
+              ))}
+            </select>
+          </div>
 
-        <div className="space-y-1">
-          <label className="text-xs font-semibold text-slate-500">Status</label>
-          <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} className={selectClass}>
-            <option value="">Todos</option>
-            <option value="ativo">Ativo</option>
-            <option value="a_fazer">A fazer</option>
-          </select>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-500">Titular</label>
+            <select value={filtroTitular} onChange={e => setFiltroTitular(e.target.value)} className={selectClass}>
+              <option value={FILTRO_TODOS}>Todos</option>
+              <option value={FILTRO_SEM_TITULAR}>Sem titular</option>
+              {titulares.map(t => (
+                <option key={t.id} value={t.id}>{t.nome}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-500">Categoria</label>
+            <select value={filtroCategoria} onChange={e => setFiltroCategoria(e.target.value)} className={selectClass}>
+              <option value={FILTRO_TODOS}>Todas</option>
+              {categorias.map(c => (
+                <option key={c.id} value={c.id}>{c.nome}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-500">Status/contrato</label>
+            <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} className={selectClass}>
+              <option value={FILTRO_TODOS}>Todos</option>
+              <option value="ativo">Ativo</option>
+              <option value="a_fazer">A fazer</option>
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-500">Recorrência</label>
+            <select value={filtroRecorrencia} onChange={e => setFiltroRecorrencia(e.target.value)} className={selectClass}>
+              <option value={FILTRO_TODOS}>Todas</option>
+              <option value="uma_vez">Uma vez</option>
+              <option value="mensal">Mensal</option>
+              <option value="anual">Anual</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -473,7 +568,7 @@ export default function Contas() {
               disabled={excluindoSelecionadas || contasFiltradas.length === 0}
               className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
             >
-              Selecionar todas
+              Selecionar visíveis
             </button>
             {contasSelecionadas.size > 0 && (
               <button
@@ -575,7 +670,7 @@ export default function Contas() {
       {modalCadastro && (
         <ModalFormConta
           conta={null}
-          centroIdInicial={filtroCentro}
+          centroIdInicial={filtroCentro !== FILTRO_TODOS && filtroCentro !== FILTRO_GERAL ? filtroCentro : ''}
           centrosCusto={centrosCusto}
           titulares={titulares}
           categorias={categorias}
