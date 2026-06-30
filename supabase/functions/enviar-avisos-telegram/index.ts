@@ -10,6 +10,7 @@ const MANUAL_COOLDOWN_SECONDS = 60
 const EXECUCAO_EXPIRADA_MINUTOS = 15
 const PRAZO_ALERTA_PADRAO = 3
 const PRAZO_ALERTA_MAXIMO = 30
+const LIMITE_ITENS_MENSAGEM = 15
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: {
@@ -152,9 +153,34 @@ function somarDias(dataISO: string, dias: number) {
   return dataSaoPaulo(data)
 }
 
+function escapeHtml(valor: unknown): string {
+  return String(valor ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function formatarMoeda(valor: unknown) {
+  const numero = Number(valor ?? 0)
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(Number.isFinite(numero) ? numero : 0)
+}
+
 function formatarData(vencimento: string) {
-  const [, mes, dia] = vencimento.split('-')
-  return `${dia}/${mes}`
+  const [ano, mes, dia] = vencimento.split('-')
+  return `${dia}/${mes}/${ano}`
+}
+
+function obterNomeImovel(conta: any) {
+  return conta?.centros_custo?.nome ?? 'Geral'
+}
+
+function obterNomeTitular(conta: any) {
+  return conta?.titulares?.nome ?? 'Sem titular'
 }
 
 function parseChats(valor?: string | null): ChatTelegram[] {
@@ -171,12 +197,18 @@ function parseChats(valor?: string | null): ChatTelegram[] {
   }
 }
 
-function linhaLancamento(lancamento: any, emoji: string, sufixo: string) {
-  const conta = lancamento.contas?.nome ?? '-'
-  const imovel = lancamento.contas?.centros_custo?.nome ?? 'Geral / Sem imovel'
-  const titular = lancamento.contas?.titulares?.nome ?? 'Sem titular'
-  const valor = `R$ ${Number(lancamento.valor ?? 0).toFixed(2).replace('.', ',')}`
-  return `${emoji} ${conta} | ${imovel} | ${titular} | ${valor} | ${sufixo}`
+function linhaLancamento(lancamento: any, descricaoVencimento: string) {
+  const conta = escapeHtml(lancamento.contas?.nome ?? 'Conta sem nome')
+  const imovel = escapeHtml(obterNomeImovel(lancamento.contas))
+  const titular = escapeHtml(obterNomeTitular(lancamento.contas))
+  const valor = escapeHtml(formatarMoeda(lancamento.valor))
+
+  return [
+    `• <b>${conta}</b> — ${valor}`,
+    `  ${escapeHtml(descricaoVencimento)}`,
+    `  Imóvel: ${imovel}`,
+    `  Titular: ${titular}`,
+  ].join('\n')
 }
 
 async function obterWorkspaceUnicoDoUsuario(userId: string) {
@@ -265,47 +297,54 @@ function montarMensagem(tipo: TipoAviso, lancamentos: any[], hoje: string) {
 
   if (tipo === 'tarde' && vencidos.length === 0 && vencem.length === 0) return null
   if (tipo === 'manha' && lancamentos.length === 0) {
-    return '✅ <b>Gestor de Contas</b> — Nenhuma conta pendente hoje.'
+    return [
+      '✅ <b>Tudo certo por aqui!</b>',
+      '',
+      'Nenhuma conta pendente encontrada para este aviso.',
+    ].join('\n')
   }
 
+  const totalPendente = vencidos.length + vencem.length + proximos.length
+  let totalExibido = 0
   const linhas = tipo === 'manha'
-    ? ['🔔 <b>Gestor de Contas — Avisos do dia</b>', '']
-    : ['🌆 <b>Gestor de Contas — Lembrete da tarde</b>', '']
+    ? [
+      '🔔 <b>Bom dia! Aqui está seu resumo de contas</b>',
+      '',
+      `Você tem ${totalPendente} conta(s) para acompanhar:`,
+    ]
+    : [
+      '🌙 <b>Boa noite! Lembrete das contas</b>',
+      '',
+      'Confira se ficou algo pendente para hoje.',
+    ]
 
-  if (vencidos.length > 0) {
-    linhas.push('🔴 <b>Contas vencidas:</b>')
-    vencidos.forEach((lancamento) => {
-      linhas.push(linhaLancamento(
-        lancamento,
-        '🔴',
-        `Venceu ${formatarData(lancamento.vencimento)}`,
-      ))
+  function adicionarGrupo(titulo: string, itens: any[], criarDescricao: (lancamento: any) => string) {
+    if (itens.length === 0 || totalExibido >= LIMITE_ITENS_MENSAGEM) return
+
+    const limiteDisponivel = LIMITE_ITENS_MENSAGEM - totalExibido
+    const selecionados = itens.slice(0, limiteDisponivel)
+
+    linhas.push('', titulo)
+    selecionados.forEach((lancamento) => {
+      linhas.push(linhaLancamento(lancamento, criarDescricao(lancamento)))
     })
-    linhas.push('')
+    totalExibido += selecionados.length
   }
 
-  if (vencem.length > 0) {
-    linhas.push(tipo === 'manha' ? '🟡 <b>Vencem hoje:</b>' : '🟡 <b>Pague antes de amanhã:</b>')
-    vencem.forEach((lancamento) => {
-      linhas.push(linhaLancamento(
-        lancamento,
-        '🟡',
-        `Hoje ${formatarData(lancamento.vencimento)}`,
-      ))
-    })
-    linhas.push('')
+  adicionarGrupo('🔴 <b>Vencidas</b>', vencidos, (lancamento) => (
+    `Venceu em ${formatarData(lancamento.vencimento)}`
+  ))
+  adicionarGrupo('🟡 <b>Vencem hoje</b>', vencem, () => 'Vence hoje')
+  adicionarGrupo('🟢 <b>Próximas</b>', proximos, (lancamento) => (
+    `Vence em ${formatarData(lancamento.vencimento)}`
+  ))
+
+  const ocultos = totalPendente - totalExibido
+  if (ocultos > 0) {
+    linhas.push('', `+ ${ocultos} conta(s) pendente(s) no sistema.`)
   }
 
-  if (proximos.length > 0) {
-    linhas.push('🟢 <b>Vencem em breve:</b>')
-    proximos.forEach((lancamento) => {
-      linhas.push(linhaLancamento(
-        lancamento,
-        '🟢',
-        `Dia ${formatarData(lancamento.vencimento)}`,
-      ))
-    })
-  }
+  linhas.push('', 'Acesse o sistema para marcar pagamentos e anexar comprovantes.')
 
   return linhas.join('\n').trim()
 }
