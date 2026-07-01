@@ -8,7 +8,3 @@ export async function enviarAvisosVencimento(supabase, tipo = 'manha') {
 
   return data
 }
-
-export async function enviarLembreteTarde(supabase) {
-  return enviarAvisosVencimento(supabase, 'tarde')
-}
