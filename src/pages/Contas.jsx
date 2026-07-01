@@ -273,7 +273,7 @@ function CardConta({
       {/* Detalhes */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 pt-3 border-t border-slate-100">
         <div>
-          <p className="text-[11px] text-slate-400 font-medium">Centro de custo</p>
+          <p className="text-[11px] text-slate-400 font-medium">Imóvel</p>
           <div className="mt-1 flex items-center gap-1.5 min-w-0">
             <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold leading-none ${centro.badgeClass}`}>
               {centro.badge}

@@ -265,7 +265,7 @@ export default function Imoveis() {
       {/* Header da lista */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">
-          {centros.length} {centros.length === 1 ? 'centro de custo' : 'centros de custo'}
+          {centros.length} {centros.length === 1 ? 'imóvel' : 'imóveis'}
         </p>
         <button
           onClick={() => setModalCadastro(true)}
@@ -298,7 +298,7 @@ export default function Imoveis() {
           className="rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-3 p-8 text-slate-400 hover:border-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors min-h-[160px]"
         >
           <Plus size={22} />
-          <span className="text-sm font-medium">Novo centro de custo</span>
+          <span className="text-sm font-medium">Novo imóvel</span>
         </button>
       </div>
 

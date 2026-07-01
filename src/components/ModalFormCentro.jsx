@@ -62,7 +62,7 @@ export default function ModalFormCentro({ centro, onClose, onSalvo }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4 shrink-0">
           <h2 className="text-base font-bold text-slate-900">
-            {isEdicao ? 'Editar centro de custo' : 'Novo centro de custo'}
+            {isEdicao ? 'Editar imóvel' : 'Novo imóvel'}
           </h2>
           <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
             <X size={17} className="text-slate-400" />

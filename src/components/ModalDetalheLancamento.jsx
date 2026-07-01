@@ -450,7 +450,7 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
               </InfoLinha>
             )}
 
-            <InfoLinha label="Centro de custo">
+            <InfoLinha label="Imóvel">
               <span className="text-sm text-slate-700 truncate">
                 {lancamento.contas?.centros_custo?.nome ?? '—'}
               </span>

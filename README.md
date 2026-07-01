@@ -5,7 +5,7 @@ Sistema web para gestao de contas domesticas e imobiliarias, com organizacao por
 ## Funcionalidades
 
 - Cadastro e gestao de contas recorrentes e avulsas.
-- Organizacao por imoveis ou centros de custo.
+- Organizacao por imoveis. No banco e no codigo interno, esse modelo ainda usa `centros_custo` e `centro_id`.
 - Cadastro de titulares responsaveis pelas contas.
 - Cadastro de categorias de despesa.
 - Geracao e acompanhamento de lancamentos.
@@ -111,4 +111,3 @@ O projeto esta em desenvolvimento ativo. A branch principal de trabalho atual e 
 Para manutencao operacional, configuracao de secrets, deploy de Edge Functions e teste do Cron, consulte:
 
 [docs/DEPLOY_SUPABASE.md](docs/DEPLOY_SUPABASE.md)
-
