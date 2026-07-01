@@ -5,6 +5,13 @@ export function localISODate(date) {
   return `${y}-${m}-${d}`
 }
 
+export function formatarMoeda(valor) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(Number(valor ?? 0))
+}
+
 // Retorna o status correto para persistência no banco.
 // 'hoje' não é um valor válido — lançamentos do dia atual ficam 'pendente'
 // e a UI deriva o label "Vence hoje" via statusEfetivo() em tempo real.

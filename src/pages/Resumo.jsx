@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Loader2, TrendingUp, TrendingDown, ChevronDown } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { formatarMoeda as formatarValor } from '../lib/utils'
 
 // ── Constantes ───────────────────────────────────────────────
 
@@ -9,12 +10,6 @@ const NOMES_MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ]
-
-// ── Utilitários ──────────────────────────────────────────────
-
-function formatarValor(valor) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor ?? 0)
-}
 
 // ── Detalhe expandido do mês ─────────────────────────────────
 

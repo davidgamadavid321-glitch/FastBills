@@ -7,6 +7,7 @@ import {
 import { supabase } from '../lib/supabase'
 import { enviarAvisosVencimento } from '../lib/telegram'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { formatarMoeda as formatarValor } from '../lib/utils'
 
 // ── Constantes ────────────────────────────────────────────────
 
@@ -31,10 +32,6 @@ function localISODate(date) {
 function somarDiasISO(dataISO, dias) {
   const [ano, mes, dia] = dataISO.split('-').map(Number)
   return localISODate(new Date(ano, mes - 1, dia + dias))
-}
-
-function formatarValor(valor) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor ?? 0)
 }
 
 function formatarData(vencimento = '') {

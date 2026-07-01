@@ -4,14 +4,10 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import * as LucideIcons from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
-import { localISODate } from '../lib/utils'
+import { formatarMoeda as formatarValor, localISODate } from '../lib/utils'
 import ModalFormConta from '../components/ModalFormConta'
 
 // ── Helpers ──────────────────────────────────────────────────
-
-function formatarValor(valor) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor ?? 0)
-}
 
 const RECORRENCIA_LABEL = {
   uma_vez: 'Uma vez',
@@ -99,26 +95,52 @@ function dataVencimentoReferencia(conta, hojeISO) {
   return localISODate(new Date(anoAtual, mesReferencia - 1, dia))
 }
 
-function chaveLancamento(contaId, vencimento) {
-  return `${contaId}:${vencimento}`
+function dataLancamentoISO(vencimento) {
+  return String(vencimento ?? '').slice(0, 10)
 }
 
-function grupoVencimentoConta(conta, hojeISO, lancamentosPorContaVencimento) {
+function chaveLancamento(contaId, vencimento) {
+  const data = dataLancamentoISO(vencimento)
+  return contaId && data ? `${contaId}|${data}` : ''
+}
+
+function classificarVencimento(vencimento, hojeISO) {
+  if (!vencimento) return 'futuras'
+
+  if (vencimento < hojeISO) return 'vencidas'
+  if (vencimento === hojeISO) return 'hoje'
+  if (vencimento <= somarDiasISO(hojeISO, DIAS_PROXIMAS)) return 'proximas'
+  return 'futuras'
+}
+
+function lancamentoRelevanteConta(conta, lancamentosPorConta) {
+  const lancamentosConta = lancamentosPorConta.get(conta.id) ?? []
+  const naoPagos = lancamentosConta
+    .filter(lancamento => lancamento.status !== 'pago')
+    .sort((a, b) => a.vencimentoISO.localeCompare(b.vencimentoISO))
+
+  return naoPagos[0] ?? null
+}
+
+function grupoVencimentoConta(conta, hojeISO, lancamentosPorContaVencimento, lancamentosPorConta) {
+  const lancamentoNaoPago = lancamentoRelevanteConta(conta, lancamentosPorConta)
+  if (lancamentoNaoPago) {
+    const vencimento = lancamentoNaoPago.vencimentoISO
+    return { grupo: classificarVencimento(vencimento, hojeISO), vencimento }
+  }
+
   const vencimento = dataVencimentoReferencia(conta, hojeISO)
   if (!vencimento) return { grupo: 'futuras', vencimento: '9999-12-31' }
 
   const lancamento = lancamentosPorContaVencimento.get(chaveLancamento(conta.id, vencimento))
   if (lancamento?.status === 'pago') return { grupo: 'pagas', vencimento }
 
-  if (vencimento < hojeISO) return { grupo: 'vencidas', vencimento }
-  if (vencimento === hojeISO) return { grupo: 'hoje', vencimento }
-  if (vencimento <= somarDiasISO(hojeISO, DIAS_PROXIMAS)) return { grupo: 'proximas', vencimento }
-  return { grupo: 'futuras', vencimento }
+  return { grupo: classificarVencimento(vencimento, hojeISO), vencimento }
 }
 
-function ordenarPorVencimento(a, b, hojeISO) {
-  const vencimentoA = dataVencimentoReferencia(a, hojeISO)
-  const vencimentoB = dataVencimentoReferencia(b, hojeISO)
+function ordenarPorVencimento(a, b, hojeISO, lancamentosPorContaVencimento, lancamentosPorConta) {
+  const vencimentoA = grupoVencimentoConta(a, hojeISO, lancamentosPorContaVencimento, lancamentosPorConta).vencimento
+  const vencimentoB = grupoVencimentoConta(b, hojeISO, lancamentosPorContaVencimento, lancamentosPorConta).vencimento
   return (
     vencimentoA.localeCompare(vencimentoB)
     || (a.nome ?? '').localeCompare(b.nome ?? '')
@@ -437,9 +459,28 @@ export default function Contas() {
   const lancamentosPorContaVencimento = useMemo(() => {
     const map = new Map()
     lancamentos.forEach(lancamento => {
-      if (lancamento.conta_id && lancamento.vencimento) {
-        map.set(chaveLancamento(lancamento.conta_id, lancamento.vencimento), lancamento)
+      const chave = chaveLancamento(lancamento.conta_id, lancamento.vencimento)
+      if (chave) {
+        const atual = map.get(chave)
+        if (!atual || (atual.status === 'pago' && lancamento.status !== 'pago')) {
+          map.set(chave, lancamento)
+        }
       }
+    })
+    return map
+  }, [lancamentos])
+
+  const lancamentosPorConta = useMemo(() => {
+    const map = new Map()
+    lancamentos.forEach(lancamento => {
+      if (!lancamento.conta_id) return
+
+      const vencimentoISO = dataLancamentoISO(lancamento.vencimento)
+      if (!vencimentoISO) return
+
+      const lista = map.get(lancamento.conta_id) ?? []
+      lista.push({ ...lancamento, vencimentoISO })
+      map.set(lancamento.conta_id, lista)
     })
     return map
   }, [lancamentos])
@@ -454,16 +495,16 @@ export default function Contas() {
     }
 
     contasFiltradas.forEach(conta => {
-      const { grupo } = grupoVencimentoConta(conta, hojeISO, lancamentosPorContaVencimento)
+      const { grupo } = grupoVencimentoConta(conta, hojeISO, lancamentosPorContaVencimento, lancamentosPorConta)
       inicial[grupo].push(conta)
     })
 
     Object.keys(inicial).forEach(grupo => {
-      inicial[grupo].sort((a, b) => ordenarPorVencimento(a, b, hojeISO))
+      inicial[grupo].sort((a, b) => ordenarPorVencimento(a, b, hojeISO, lancamentosPorContaVencimento, lancamentosPorConta))
     })
 
     return inicial
-  }, [contasFiltradas, hojeISO, lancamentosPorContaVencimento])
+  }, [contasFiltradas, hojeISO, lancamentosPorContaVencimento, lancamentosPorConta])
 
   const filtrosAtivos = (
     busca.trim() !== ''

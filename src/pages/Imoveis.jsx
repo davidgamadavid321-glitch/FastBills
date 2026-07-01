@@ -3,15 +3,11 @@ import { Plus, MoreVertical, Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
-import { localISODate } from '../lib/utils'
+import { formatarMoeda as formatarValor, localISODate } from '../lib/utils'
 import ModalFormCentro from '../components/ModalFormCentro'
 import ModalTrocarTitular from '../components/ModalTrocarTitular'
 
 // ── Helpers ──────────────────────────────────────────────────
-
-function formatarValor(valor) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor ?? 0)
-}
 
 const TIPO_LABEL = {
   casa:        'Casa',

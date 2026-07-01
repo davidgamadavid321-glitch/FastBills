@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, Plus } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { formatarMoeda as formatarValor } from '../lib/utils'
 import ModalCadastroConta from '../components/ModalCadastroConta'
 import ModalDetalheLancamento from '../components/ModalDetalheLancamento'
 
@@ -22,19 +23,21 @@ function localISODate(date) {
   return `${y}-${m}-${d}`
 }
 
-function formatarValor(valor) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor ?? 0)
-}
-
 function formatarData(iso = '') {
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
 }
 
+function dataLancamentoISO(vencimento) {
+  return String(vencimento ?? '').slice(0, 10)
+}
+
 function statusEfetivo(vencimento, status, hoje) {
+  const vencimentoISO = dataLancamentoISO(vencimento)
   if (status === 'pago') return 'pago'
-  if (status === 'vencido') return 'vencido'
-  if (vencimento === hoje) return 'hoje'
+  if (!vencimentoISO) return 'pendente'
+  if (status === 'vencido' || vencimentoISO < hoje) return 'vencido'
+  if (vencimentoISO === hoje) return 'hoje'
   return 'pendente'
 }
 
@@ -400,7 +403,7 @@ export default function Dashboard() {
   const byDay = useMemo(() => {
     const map = {}
     filtered.forEach(l => {
-      const d = parseInt(l.vencimento.split('-')[2], 10)
+      const d = parseInt(dataLancamentoISO(l.vencimento).split('-')[2], 10)
       if (!map[d]) map[d] = []
       map[d].push(l)
     })
@@ -456,9 +459,10 @@ export default function Dashboard() {
     const inicioMes = localISODate(new Date(y, m, 1))
     const fimMes = localISODate(new Date(y, m + 1, 0))
 
-    const doMesAtual = novosLancamentos.filter(
-      l => l.vencimento >= inicioMes && l.vencimento <= fimMes
-    )
+    const doMesAtual = novosLancamentos.filter(l => {
+      const vencimento = dataLancamentoISO(l.vencimento)
+      return vencimento >= inicioMes && vencimento <= fimMes
+    })
 
     if (doMesAtual.length > 0) {
       setLancamentos(prev => [...prev, ...doMesAtual])
