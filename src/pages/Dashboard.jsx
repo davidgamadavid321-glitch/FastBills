@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, Plus } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
-import { formatarMoeda as formatarValor } from '../lib/utils'
+import { formatarMoeda as formatarValor, localISODate, normalizarDataISO } from '../lib/utils'
 import ModalCadastroConta from '../components/ModalCadastroConta'
 import ModalDetalheLancamento from '../components/ModalDetalheLancamento'
 
@@ -16,24 +16,13 @@ const NOMES_MESES = [
 
 // ── Utilitários ──────────────────────────────────────────────
 
-function localISODate(date) {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
 function formatarData(iso = '') {
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
 }
 
-function dataLancamentoISO(vencimento) {
-  return String(vencimento ?? '').slice(0, 10)
-}
-
 function statusEfetivo(vencimento, status, hoje) {
-  const vencimentoISO = dataLancamentoISO(vencimento)
+  const vencimentoISO = normalizarDataISO(vencimento)
   if (status === 'pago') return 'pago'
   if (!vencimentoISO) return 'pendente'
   if (status === 'vencido' || vencimentoISO < hoje) return 'vencido'
@@ -403,7 +392,7 @@ export default function Dashboard() {
   const byDay = useMemo(() => {
     const map = {}
     filtered.forEach(l => {
-      const d = parseInt(dataLancamentoISO(l.vencimento).split('-')[2], 10)
+      const d = parseInt(normalizarDataISO(l.vencimento).split('-')[2], 10)
       if (!map[d]) map[d] = []
       map[d].push(l)
     })
@@ -460,7 +449,7 @@ export default function Dashboard() {
     const fimMes = localISODate(new Date(y, m + 1, 0))
 
     const doMesAtual = novosLancamentos.filter(l => {
-      const vencimento = dataLancamentoISO(l.vencimento)
+      const vencimento = normalizarDataISO(l.vencimento)
       return vencimento >= inicioMes && vencimento <= fimMes
     })
 

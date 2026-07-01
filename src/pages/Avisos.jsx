@@ -7,7 +7,7 @@ import {
 import { supabase } from '../lib/supabase'
 import { enviarAvisosVencimento } from '../lib/telegram'
 import { useWorkspace } from '../contexts/WorkspaceContext'
-import { formatarMoeda as formatarValor } from '../lib/utils'
+import { formatarMoeda as formatarValor, localISODate } from '../lib/utils'
 
 // ── Constantes ────────────────────────────────────────────────
 
@@ -21,13 +21,6 @@ const LIMITE_ITENS_PREVIA = 15
 
 
 // ── Helpers ───────────────────────────────────────────────────
-
-function localISODate(date) {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
 
 function somarDiasISO(dataISO, dias) {
   const [ano, mes, dia] = dataISO.split('-').map(Number)

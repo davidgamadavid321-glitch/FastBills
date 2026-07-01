@@ -5,6 +5,10 @@ export function localISODate(date) {
   return `${y}-${m}-${d}`
 }
 
+export function normalizarDataISO(valor) {
+  return String(valor ?? '').slice(0, 10)
+}
+
 export function formatarMoeda(valor) {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',

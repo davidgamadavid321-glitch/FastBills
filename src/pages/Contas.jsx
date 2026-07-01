@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import * as LucideIcons from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
-import { formatarMoeda as formatarValor, localISODate } from '../lib/utils'
+import { formatarMoeda as formatarValor, localISODate, normalizarDataISO } from '../lib/utils'
 import ModalFormConta from '../components/ModalFormConta'
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -95,12 +95,8 @@ function dataVencimentoReferencia(conta, hojeISO) {
   return localISODate(new Date(anoAtual, mesReferencia - 1, dia))
 }
 
-function dataLancamentoISO(vencimento) {
-  return String(vencimento ?? '').slice(0, 10)
-}
-
 function chaveLancamento(contaId, vencimento) {
-  const data = dataLancamentoISO(vencimento)
+  const data = normalizarDataISO(vencimento)
   return contaId && data ? `${contaId}|${data}` : ''
 }
 
@@ -475,7 +471,7 @@ export default function Contas() {
     lancamentos.forEach(lancamento => {
       if (!lancamento.conta_id) return
 
-      const vencimentoISO = dataLancamentoISO(lancamento.vencimento)
+      const vencimentoISO = normalizarDataISO(lancamento.vencimento)
       if (!vencimentoISO) return
 
       const lista = map.get(lancamento.conta_id) ?? []

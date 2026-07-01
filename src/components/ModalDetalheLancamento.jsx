@@ -3,16 +3,9 @@ import { X, Upload, FileText, CheckCircle, Loader2, Tag, Trash2, RefreshCw } fro
 import * as LucideIcons from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
-import { formatarMoeda as formatarValor } from '../lib/utils'
+import { formatarMoeda as formatarValor, localISODate } from '../lib/utils'
 
 // ── Utilitários ──────────────────────────────────────────────
-
-function localISODate(date) {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
 
 function formatarVencimento(iso = '') {
   const [y, m, d] = iso.split('-')
