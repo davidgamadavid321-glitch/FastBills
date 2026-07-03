@@ -134,6 +134,7 @@ export default function Imoveis() {
   const [lancamentosMes, setLancamentosMes]     = useState([])
   const [todosOsTitulares, setTodosOsTitulares] = useState([])
   const [loading, setLoading]                   = useState(true)
+  const [erroCarregamento, setErroCarregamento] = useState('')
 
   const [modalCadastro, setModalCadastro]           = useState(false)
   const [modalEdicao, setModalEdicao]               = useState(null)
@@ -143,6 +144,7 @@ export default function Imoveis() {
     if (loadingWorkspace || erroWorkspace || !workspaceId) return
 
     setLoading(true)
+    setErroCarregamento('')
 
     const now = new Date()
     const y   = now.getFullYear()
@@ -151,10 +153,10 @@ export default function Imoveis() {
     const fimMes    = localISODate(new Date(y, m + 1, 0))
 
     const [
-      { data: cs },
-      { data: ct },
-      { data: lc },
-      { data: ts },
+      { data: cs, error: erroCs },
+      { data: ct, error: erroCt },
+      { data: lc, error: erroLc },
+      { data: ts, error: erroTs },
     ] = await Promise.all([
       supabase.from('centros_custo').select('*').eq('workspace_id', workspaceId).order('nome'),
       supabase.from('contas').select('id, nome, centro_id, titular_id, titulares:titulares!contas_workspace_titular_fkey(id, nome, cor)').eq('workspace_id', workspaceId),
@@ -166,6 +168,14 @@ export default function Imoveis() {
         .eq('workspace_id', workspaceId),
       supabase.from('titulares').select('*').eq('workspace_id', workspaceId).order('nome'),
     ])
+
+    const erro = erroCs || erroCt || erroLc || erroTs
+    if (erro) {
+      if (import.meta.env.DEV) console.error('Erro ao carregar imóveis:', erro)
+      setErroCarregamento('Não foi possível carregar os imóveis. Tente novamente.')
+      setLoading(false)
+      return
+    }
 
     setCentros(cs ?? [])
     setContas(ct ?? [])
@@ -249,6 +259,10 @@ export default function Imoveis() {
 
   if (erroWorkspace) {
     return <p className="text-sm text-red-500">{erroWorkspace}</p>
+  }
+
+  if (erroCarregamento) {
+    return <p className="text-sm text-red-500">{erroCarregamento}</p>
   }
 
   if (loadingWorkspace || loading) {

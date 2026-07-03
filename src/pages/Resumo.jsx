@@ -118,6 +118,7 @@ export default function Resumo() {
   const [ano,          setAno]          = useState(anoHoje)
   const [lancamentos,  setLancamentos]  = useState([])
   const [loading,      setLoading]      = useState(true)
+  const [erroCarregamento, setErroCarregamento] = useState('')
   const [mesExpandido, setMesExpandido] = useState(null)
 
   const anos = useMemo(
@@ -129,6 +130,7 @@ export default function Resumo() {
     if (loadingWorkspace || erroWorkspace || !workspaceId) return
 
     setLoading(true)
+    setErroCarregamento('')
     setMesExpandido(null)
     supabase
       .from('lancamentos')
@@ -142,7 +144,14 @@ export default function Resumo() {
       .eq('workspace_id', workspaceId)
       .gte('vencimento', `${ano}-01-01`)
       .lte('vencimento', `${ano}-12-31`)
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) {
+          if (import.meta.env.DEV) console.error('Erro ao carregar resumo:', error)
+          setErroCarregamento('Não foi possível carregar o resumo. Tente novamente.')
+          setLancamentos([])
+          setLoading(false)
+          return
+        }
         setLancamentos(data ?? [])
         setLoading(false)
       })
@@ -227,6 +236,8 @@ export default function Resumo() {
         <div className="flex items-center justify-center h-48">
           <Loader2 size={20} className="animate-spin text-slate-300" />
         </div>
+      ) : erroCarregamento ? (
+        <p className="text-sm text-red-500">{erroCarregamento}</p>
       ) : (
         <>
 

@@ -250,6 +250,7 @@ export default function Dashboard() {
   const [currentMonth, setCurrentMonth] = useState(() => new Date())
   const [lancamentos, setLancamentos] = useState([])
   const [loading, setLoading] = useState(true)
+  const [erroCarregamento, setErroCarregamento] = useState('')
   const [selectedDay, setSelectedDay] = useState(null)
   const [filterTitular, setFilterTitular] = useState('')
   const [filterStatus, setFilterStatus] = useState('todos')
@@ -277,6 +278,7 @@ export default function Dashboard() {
     const fim    = localISODate(new Date(y, m + 1, 0))
 
     setLoading(true)
+    setErroCarregamento('')
     setSelectedDay(null)
 
     const CONTAS_SELECT = `
@@ -299,7 +301,12 @@ export default function Dashboard() {
         .eq('workspace_id', workspaceId)
         .order('vencimento')
 
-      if (error) { setLoading(false); return }
+      if (error) {
+        if (import.meta.env.DEV) console.error('Erro ao carregar calendário:', error)
+        setErroCarregamento('Não foi possível carregar o calendário. Tente novamente.')
+        setLoading(false)
+        return
+      }
 
       const carregados = data ?? []
 
@@ -595,6 +602,10 @@ export default function Dashboard() {
           {loading ? (
             <div className="flex items-center justify-center h-48">
               <span className="text-slate-400 text-sm">Carregando...</span>
+            </div>
+          ) : erroCarregamento ? (
+            <div className="flex items-center justify-center h-48">
+              <p className="text-sm text-red-500">{erroCarregamento}</p>
             </div>
           ) : (
             <div className="grid grid-cols-7 gap-1.5">
