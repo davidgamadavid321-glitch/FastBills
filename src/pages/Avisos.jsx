@@ -5,7 +5,7 @@ import {
   Building2, Car, Smartphone, Package,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { enviarAvisosVencimento } from '../lib/telegram'
+import { enviarAvisosVencimento, MENSAGEM_ERRO_ENVIO_TELEGRAM } from '../lib/telegram'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { formatarMoeda as formatarValor, localISODate } from '../lib/utils'
 
@@ -415,7 +415,10 @@ function SecaoTelegram() {
           : 'Avisos enviados com sucesso.'),
       })
     } catch (e) {
-      setFeedbackEnvio({ ok: false, mensagem: e.message ?? 'Erro ao enviar avisos.' })
+      if (import.meta.env.DEV) {
+        console.error('Erro ao enviar avisos pelo Telegram:', e)
+      }
+      setFeedbackEnvio({ ok: false, mensagem: MENSAGEM_ERRO_ENVIO_TELEGRAM })
     }
     setEnviando(false)
   }
