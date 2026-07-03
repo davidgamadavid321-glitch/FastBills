@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Plus, MoreVertical, Loader2, Tag, Trash2, Search } from 'lucide-react'
+import { Plus, MoreVertical, Loader2, Tag, Trash2, Search, Inbox } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import * as LucideIcons from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -828,9 +828,44 @@ export default function Contas() {
 
       {/* Lista de cards agrupada por vencimento */}
       {contasFiltradas.length === 0 ? (
-        <div className="flex items-center justify-center py-16">
-          <p className="text-sm text-slate-400">Nenhuma conta encontrada.</p>
-        </div>
+        contas.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 py-16 px-4 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
+              <Inbox size={20} className="text-slate-400" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-slate-900">Você ainda não cadastrou nenhuma conta.</p>
+              <p className="text-xs text-slate-500 max-w-xs">
+                Crie sua primeira conta para acompanhar vencimentos, pagamentos e comprovantes.
+              </p>
+            </div>
+            <button
+              onClick={() => setModalCadastro(true)}
+              className="flex items-center gap-1.5 bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors"
+            >
+              <Plus size={14} />
+              Nova conta
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 py-16 px-4 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
+              <Search size={20} className="text-slate-400" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-slate-900">Nenhuma conta encontrada com os filtros atuais.</p>
+              <p className="text-xs text-slate-500 max-w-xs">
+                Tente ajustar a busca ou limpar os filtros para ver mais contas.
+              </p>
+            </div>
+            <button
+              onClick={limparFiltros}
+              className="px-4 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              Limpar filtros
+            </button>
+          </div>
+        )
       ) : (
         <div className="space-y-4">
           {GRUPOS_VENCIMENTO.map(grupo => (
