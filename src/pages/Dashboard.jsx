@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, Plus, Loader2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { formatarMoeda as formatarValor, localISODate, normalizarDataISO } from '../lib/utils'
@@ -601,7 +601,7 @@ export default function Dashboard() {
           {/* Grid de dias */}
           {loading ? (
             <div className="flex items-center justify-center h-48">
-              <span className="text-slate-400 text-sm">Carregando...</span>
+              <Loader2 size={20} className="animate-spin text-slate-300" />
             </div>
           ) : erroCarregamento ? (
             <div className="flex items-center justify-center h-48">
