@@ -61,10 +61,10 @@ function titularIdDoConta(conta) {
 // ── Mapas de estilo ──────────────────────────────────────────
 
 const DIA_STATUS = {
-  vencido: 'border-red-200 bg-red-50/80',
-  hoje: 'border-amber-200 bg-amber-50/80',
-  pendente: 'border-slate-200 bg-slate-50',
-  pago: 'border-green-200 bg-green-50/70',
+  vencido: 'border-red-100 bg-red-50/80',
+  hoje: 'border-amber-100 bg-amber-50/80',
+  pendente: 'border-slate-100 bg-slate-50',
+  pago: 'border-green-100 bg-green-50/70',
 }
 
 const BADGE_COR = {
@@ -98,7 +98,7 @@ function MiniLancamentoDia({ lancamento, selecionado, hoje }) {
           {nome}
         </span>
         <span
-          className={`hidden sm:inline text-[10px] font-bold shrink-0 ${
+          className={`hidden sm:inline text-[10px] font-bold shrink-0 tabular-nums ${
             selecionado ? 'text-white' : s === 'vencido' ? 'text-red-700' : 'text-slate-900'
           }`}
         >
@@ -122,7 +122,7 @@ function DiaCell({ dia, lancamentos, selecionado, ehHoje, hoje, onClick }) {
     : pior
     ? DIA_STATUS[pior]
     : ehHoje
-    ? 'border-blue-200 bg-blue-50'
+    ? 'border-blue-100 bg-blue-50'
     : 'border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50'
 
   return (
@@ -132,7 +132,7 @@ function DiaCell({ dia, lancamentos, selecionado, ehHoje, hoje, onClick }) {
     >
       <div className="flex items-center justify-between gap-1">
         <span
-          className={`h-5 min-w-5 px-1.5 rounded-full text-xs font-black leading-5 text-center ${
+          className={`h-5 min-w-5 px-1.5 rounded-full text-xs font-black leading-5 text-center tabular-nums ${
             selecionado
               ? 'bg-white text-slate-900'
               : ehHoje
@@ -144,7 +144,7 @@ function DiaCell({ dia, lancamentos, selecionado, ehHoje, hoje, onClick }) {
         </span>
         {temContas && (
           <span
-            className={`text-[10px] font-bold leading-none ${
+            className={`text-[10px] font-bold leading-none tabular-nums ${
               selecionado ? 'text-white/70' : 'text-slate-400'
             }`}
           >
@@ -178,10 +178,10 @@ function CardLancamento({ lancamento, hoje, onClick }) {
 
   return (
     <div
-      className="rounded-xl border p-3 space-y-2 cursor-pointer hover:shadow-sm transition-shadow"
+      className="rounded-xl border p-3 space-y-2 cursor-pointer shadow-sm hover:shadow-md transition-shadow"
       style={cor
         ? { borderColor: `${cor}66`, backgroundColor: `${cor}10` }
-        : { borderColor: '#e2e8f0', backgroundColor: '#f8fafc' }
+        : { borderColor: '#f1f5f9', backgroundColor: '#f8fafc' }
       }
       onClick={onClick}
     >
@@ -202,8 +202,8 @@ function CardLancamento({ lancamento, hoje, onClick }) {
         </span>
       </div>
       <div className="flex items-center justify-between pt-1.5 border-t border-black/5">
-        <p className="text-xs text-slate-400">{formatarData(lancamento.vencimento)}</p>
-        <p className="text-sm font-bold text-slate-900">{formatarValor(lancamento.valor)}</p>
+        <p className="text-xs text-slate-400 tabular-nums">{formatarData(lancamento.vencimento)}</p>
+        <p className="text-sm font-bold text-slate-900 tabular-nums">{formatarValor(lancamento.valor)}</p>
       </div>
     </div>
   )
@@ -472,28 +472,33 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
 
       {/* Banner de alertas */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-3">
-          <AlertTriangle size={16} className="text-red-500 shrink-0" />
-          <div>
-            <p className="text-xs text-red-600 font-medium mb-0.5">Vencidos</p>
-            <p className="text-2xl font-black text-red-700 leading-none">{numVencidos}</p>
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
+          Visão geral do mês
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          <div className="bg-red-50 border border-red-100 rounded-2xl p-4 shadow-sm flex items-center gap-3">
+            <AlertTriangle size={16} className="text-red-500 shrink-0" />
+            <div>
+              <p className="text-[11px] text-red-600 font-semibold uppercase tracking-wide mb-0.5">Vencidos</p>
+              <p className="text-2xl font-black text-red-700 leading-none tabular-nums">{numVencidos}</p>
+            </div>
           </div>
-        </div>
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-          <p className="text-xs text-amber-600 font-medium mb-0.5">Vence hoje</p>
-          <p className="text-2xl font-black text-amber-700 leading-none">{numHoje}</p>
-        </div>
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-          <p className="text-xs text-slate-500 font-medium mb-0.5">Pendentes</p>
-          <p className="text-2xl font-black text-slate-700 leading-none">{numPendentes}</p>
-        </div>
-        <div className="bg-green-50 border border-green-200 rounded-xl p-3">
-          <p className="text-xs text-green-600 font-medium mb-0.5">Total pago</p>
-          <p className="text-base font-black text-green-700 leading-tight">{formatarValor(totalPago)}</p>
+          <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 shadow-sm">
+            <p className="text-[11px] text-amber-600 font-semibold uppercase tracking-wide mb-0.5">Vence hoje</p>
+            <p className="text-2xl font-black text-amber-700 leading-none tabular-nums">{numHoje}</p>
+          </div>
+          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 shadow-sm">
+            <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide mb-0.5">Pendentes</p>
+            <p className="text-2xl font-black text-slate-700 leading-none tabular-nums">{numPendentes}</p>
+          </div>
+          <div className="bg-green-50 border border-green-100 rounded-2xl p-4 shadow-sm">
+            <p className="text-[11px] text-green-600 font-semibold uppercase tracking-wide mb-0.5">Total pago</p>
+            <p className="text-base font-black text-green-700 leading-tight tabular-nums">{formatarValor(totalPago)}</p>
+          </div>
         </div>
       </div>
 
@@ -527,7 +532,7 @@ export default function Dashboard() {
       <div className="flex gap-4 items-start">
 
         {/* Calendário */}
-        <div className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-sm">
+        <div className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-100 p-4 sm:p-6 shadow-sm">
 
           {/* Navegação de mês */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
@@ -626,7 +631,7 @@ export default function Dashboard() {
 
         {/* Painel lateral — desktop */}
         {selectedDay && (
-          <div className="hidden lg:flex lg:flex-col w-72 shrink-0 bg-white rounded-2xl border border-slate-200 p-4 gap-3">
+          <div className="hidden lg:flex lg:flex-col w-72 shrink-0 bg-white rounded-2xl border border-slate-100 shadow-sm p-4 gap-3">
             <PainelDia
               dia={selectedDay}
               lancamentos={diaSelecionadoLancamentos}
@@ -641,7 +646,7 @@ export default function Dashboard() {
 
       {/* Painel — mobile (abaixo do calendário) */}
       {selectedDay && (
-        <div className="lg:hidden bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
+        <div className="lg:hidden bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-3">
           <PainelDia
             dia={selectedDay}
             lancamentos={diaSelecionadoLancamentos}
