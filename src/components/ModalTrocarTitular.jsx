@@ -58,7 +58,8 @@ export default function ModalTrocarTitular({ centro, titulares, onClose, onSalvo
         .eq('workspace_id', workspaceId)
 
       if (erroConta) {
-        setErro('Erro ao atualizar. Tente novamente.')
+        if (import.meta.env.DEV) console.error('Erro ao trocar titular:', erroConta)
+        setErro('Não foi possível trocar o titular. Tente novamente.')
         setSalvando(false)
         return
       }

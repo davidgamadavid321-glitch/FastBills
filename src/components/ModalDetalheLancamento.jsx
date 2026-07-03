@@ -130,7 +130,8 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
       .eq('workspace_id', workspaceId)
 
     if (erroUpdate) {
-      setErro('Erro ao trocar titular. Tente novamente.')
+      if (import.meta.env.DEV) console.error('Erro ao trocar titular:', erroUpdate)
+      setErro('Não foi possível trocar o titular. Tente novamente.')
       setSalvandoTitular(false)
       return
     }
@@ -195,7 +196,11 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
       .eq('id', lancamento.id)
       .eq('workspace_id', workspaceId)
     setExcluindo(false)
-    if (error) { setErro('Erro ao excluir. Tente novamente.'); return }
+    if (error) {
+      if (import.meta.env.DEV) console.error('Erro ao excluir lançamento:', error)
+      setErro('Não foi possível excluir o lançamento. Tente novamente.')
+      return
+    }
     onExcluido?.(lancamento.id)
     onClose()
   }
@@ -215,7 +220,11 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
       .eq('id', lancamento.id)
       .eq('workspace_id', workspaceId)
     setExcluindo(false)
-    if (e1 || e2) { setErro('Erro ao excluir. Tente novamente.'); return }
+    if (e1 || e2) {
+      if (import.meta.env.DEV) console.error('Erro ao excluir lançamentos:', e1 || e2)
+      setErro('Não foi possível excluir o lançamento. Tente novamente.')
+      return
+    }
     onExcluido?.(lancamento.id)
     onClose()
   }
@@ -231,7 +240,7 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
     setErro('')
 
     if (!workspaceId) {
-      setErro('Workspace não disponível. Tente novamente.')
+      setErro('Espaço de trabalho não disponível. Tente novamente.')
       e.target.value = ''
       return
     }
@@ -259,7 +268,8 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
       .upload(caminho, file, { upsert: true, contentType: 'application/pdf' })
 
     if (erroUpload) {
-      setErro('Erro ao enviar o arquivo. Tente novamente.')
+      if (import.meta.env.DEV) console.error('Erro ao enviar comprovante:', erroUpload)
+      setErro('Não foi possível enviar o comprovante. Tente novamente.')
       setUploadando(false)
       e.target.value = ''
       return
@@ -279,10 +289,11 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
       setLancamento(atualizado)
       onAtualizado(atualizado)
     } else {
+      if (import.meta.env.DEV) console.error('Erro ao salvar comprovante:', erroUpdate)
       if (lancamento.pdf_url !== caminho) {
         await supabase.storage.from('comprovantes').remove([caminho])
       }
-      setErro('PDF enviado, mas houve erro ao salvar. Tente novamente.')
+      setErro('O comprovante foi enviado, mas não foi possível salvar. Tente novamente.')
     }
   }
 
@@ -308,7 +319,8 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
     setAbrindoPDF(false)
 
     if (error || !data?.signedUrl) {
-      setErro('Erro ao abrir o PDF.')
+      if (import.meta.env.DEV) console.error('Erro ao abrir comprovante:', error)
+      setErro('Não foi possível abrir o comprovante. Tente novamente.')
       return
     }
 
@@ -339,7 +351,8 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
     setMarcandoPago(false)
 
     if (error) {
-      setErro('Erro ao atualizar. Tente novamente.')
+      if (import.meta.env.DEV) console.error('Erro ao marcar lançamento como pago:', error)
+      setErro('Não foi possível marcar este lançamento como pago. Tente novamente.')
       return
     }
 

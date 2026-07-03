@@ -47,7 +47,11 @@ export default function ModalFormCentro({ centro, onClose, onSalvo }) {
     const { data, error } = await query
     setSalvando(false)
 
-    if (error) { setErro('Erro ao salvar. Tente novamente.'); return }
+    if (error) {
+      if (import.meta.env.DEV) console.error('Erro ao salvar imóvel:', error)
+      setErro('Não foi possível salvar o imóvel. Tente novamente.')
+      return
+    }
     onSalvo(data)
   }
 

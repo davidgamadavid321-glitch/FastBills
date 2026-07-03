@@ -89,6 +89,7 @@ export default function ModalCadastroConta({ dia, currentMonth, onClose, onSalvo
     if (!nomeNovaCategoria.trim() || salvandoCatRef.current) return
     salvandoCatRef.current = true
     setSalvandoCategoria(true)
+    setErro('')
 
     const { data, error } = await supabase
       .from('categorias')
@@ -99,6 +100,9 @@ export default function ModalCadastroConta({ dia, currentMonth, onClose, onSalvo
     if (!error && data) {
       setCategorias(prev => [...prev, data].sort((a, b) => a.nome.localeCompare(b.nome)))
       setCategoriaSelecionada(data)
+    } else {
+      registrarErroDesenvolvimento('Erro ao criar categoria:', error)
+      setErro('Não foi possível criar a categoria. Tente novamente.')
     }
 
     setCriandoCategoria(false)
@@ -161,7 +165,7 @@ export default function ModalCadastroConta({ dia, currentMonth, onClose, onSalvo
       ? currentMonth.getMonth() + 1
       : null
 
-    if (!workspaceId) { setErro('Workspace não disponível. Tente novamente.'); return }
+    if (!workspaceId) { setErro('Espaço de trabalho não disponível. Tente novamente.'); return }
     if (!categoriaSelecionada?.id || !nome) { setErro('Selecione uma categoria válida.'); return }
     if (!Number.isInteger(diaVencimento) || diaVencimento < 1 || diaVencimento > 31) {
       setErro('Dia de vencimento inválido.')
@@ -241,11 +245,11 @@ export default function ModalCadastroConta({ dia, currentMonth, onClose, onSalvo
         onSalvo(novosLancamentos)
       } catch (error) {
         registrarErroDesenvolvimento('Erro ao gerar lançamentos da conta criada:', error)
-        setErro('Conta criada, mas houve erro ao gerar os lançamentos.')
+        setErro('A conta foi criada, mas não foi possível gerar os lançamentos. Abra a conta e revise os lançamentos.')
       }
     } catch (error) {
       registrarErroDesenvolvimento('Erro ao criar conta:', error)
-      setErro('Não foi possível criar a conta. Verifique os dados e tente novamente.')
+      setErro('Não foi possível criar a conta. Confira os dados e tente novamente.')
     } finally {
       setSalvando(false)
     }

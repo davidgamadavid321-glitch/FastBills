@@ -82,6 +82,7 @@ export default function ModalFormConta({
     if (!nomeNovaCategoria.trim() || salvandoCatRef.current) return
     salvandoCatRef.current = true
     setSalvandoCategoria(true)
+    setErro('')
 
     const { data, error } = await supabase
       .from('categorias')
@@ -93,6 +94,9 @@ export default function ModalFormConta({
       const nova = [...categorias, data].sort((a, b) => a.nome.localeCompare(b.nome))
       setCategorias(nova)
       setCategoriaSelecionada(data)
+    } else {
+      registrarErroDesenvolvimento('Erro ao criar categoria:', error)
+      setErro('Não foi possível criar a categoria. Tente novamente.')
     }
 
     setCriandoCategoria(false)
@@ -117,7 +121,7 @@ export default function ModalFormConta({
       : Number(form.valor_referencia)
     const centroIdFinal = form.centro_id || null
 
-    if (!workspaceId)               { setErro('Workspace não disponível. Tente novamente.'); return }
+    if (!workspaceId)               { setErro('Espaço de trabalho não disponível. Tente novamente.'); return }
     if (!nome)                      { setErro('Nome é obrigatório.'); return }
     if (!categoriaSelecionada)      { setErro('Selecione uma categoria.'); return }
     if (!Number.isInteger(dia) || dia < 1 || dia > 31) { setErro('Dia inválido (1–31).'); return }
@@ -219,7 +223,7 @@ export default function ModalFormConta({
       onSalvo(atualizado)
     } catch (error) {
       registrarErroDesenvolvimento('Erro ao salvar conta:', error)
-      setErro('Não foi possível salvar a conta. Verifique os dados e tente novamente.')
+      setErro('Não foi possível salvar a conta. Confira os dados e tente novamente.')
     } finally {
       setSalvando(false)
     }
