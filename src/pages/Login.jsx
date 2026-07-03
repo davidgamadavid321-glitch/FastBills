@@ -20,7 +20,7 @@ export default function Login() {
     })
 
     if (error) {
-      setErro('Email ou senha invalidos.')
+      setErro('E-mail ou senha inválidos.')
     } else {
       navigate('/')
     }

@@ -38,21 +38,21 @@ export function WorkspaceProvider({ user, children }) {
 
     if (erroMemberships) {
       setWorkspace(null)
-      setErroWorkspace('Erro ao carregar workspace.')
+      setErroWorkspace('Não foi possível carregar seu espaço de trabalho.')
       setLoadingWorkspace(false)
       return
     }
 
     if (!memberships || memberships.length === 0) {
       setWorkspace(null)
-      setErroWorkspace('Usuario sem workspace configurado.')
+      setErroWorkspace('Sua conta ainda não tem um espaço de trabalho configurado.')
       setLoadingWorkspace(false)
       return
     }
 
     if (memberships.length > 1) {
       setWorkspace(null)
-      setErroWorkspace('Usuario possui mais de um workspace. O seletor sera implementado em uma etapa futura.')
+      setErroWorkspace('Sua conta tem mais de um espaço de trabalho. A seleção será liberada em breve.')
       setLoadingWorkspace(false)
       return
     }
@@ -68,7 +68,7 @@ export function WorkspaceProvider({ user, children }) {
 
     if (erroWorkspaceData || !workspaceData) {
       setWorkspace(null)
-      setErroWorkspace('Workspace nao encontrado.')
+      setErroWorkspace('Não encontramos seu espaço de trabalho. Entre novamente ou fale com o suporte.')
       setLoadingWorkspace(false)
       return
     }
