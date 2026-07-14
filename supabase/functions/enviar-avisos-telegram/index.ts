@@ -11,6 +11,7 @@ const EXECUCAO_EXPIRADA_MINUTOS = 15
 const PRAZO_ALERTA_PADRAO = 3
 const PRAZO_ALERTA_MAXIMO = 30
 const LIMITE_ITENS_MENSAGEM = 15
+const SCHEDULER_JANELA_MINUTOS = 15
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: {
@@ -25,10 +26,25 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-type TipoAviso = 'manha' | 'tarde'
+type TipoAviso = 'manha' | 'tarde' | 'scheduler'
+type TipoAvisoLegado = 'manha' | 'tarde'
 type OrigemAviso = 'cron' | 'manual'
+type ModoAviso = 'legado' | 'scheduler'
 type ChatTelegram = {
   chat_id: number | string
+}
+
+type ConfigAlertasTelegram = {
+  ativo: boolean
+  prazo: number
+  horarios: string[]
+  timezone: string
+}
+
+type ConfiguracoesWorkspace = {
+  chats: ChatTelegram[]
+  prazo: number
+  alertas: ConfigAlertasTelegram
 }
 
 type DadosAutorizacao = {
@@ -41,6 +57,7 @@ type ResultadoWorkspace = {
   envios: number
   lancamentos: number
   status: string
+  slot?: string
 }
 
 class ErroRequisicao extends Error {
@@ -112,32 +129,50 @@ async function autorizar(req: Request, origem: OrigemAviso): Promise<DadosAutori
   return { userId: data.user.id }
 }
 
-function validarBody(body: unknown): { tipo: TipoAviso; origem: OrigemAviso } {
+function validarBody(body: unknown): { tipo?: TipoAvisoLegado; origem: OrigemAviso; modo: ModoAviso } {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new ErroRequisicao('Corpo da requisicao invalido.')
   }
 
   const payload = body as Record<string, unknown>
-  const chavesPermitidas = new Set(['tipo', 'origem'])
+  const chavesPermitidas = new Set(['tipo', 'origem', 'modo'])
   const chavesInvalidas = Object.keys(payload).filter((chave) => !chavesPermitidas.has(chave))
   if (chavesInvalidas.length > 0) {
     throw new ErroRequisicao('Parametros nao permitidos na requisicao.')
-  }
-
-  if (payload.tipo !== 'manha' && payload.tipo !== 'tarde') {
-    throw new ErroRequisicao('Tipo de aviso invalido.')
   }
 
   if (payload.origem !== 'manual' && payload.origem !== 'cron') {
     throw new ErroRequisicao('Origem de aviso invalida.')
   }
 
-  return { tipo: payload.tipo, origem: payload.origem }
+  if (payload.modo !== undefined) {
+    if (payload.modo !== 'scheduler') {
+      throw new ErroRequisicao('Modo de aviso invalido.')
+    }
+    if (payload.origem !== 'cron') {
+      throw new ErroRequisicao('Scheduler disponivel somente para chamadas automaticas.')
+    }
+    if (payload.tipo !== undefined) {
+      throw new ErroRequisicao('Tipo nao deve ser informado no modo scheduler.')
+    }
+
+    return { origem: payload.origem, modo: 'scheduler' }
+  }
+
+  if (payload.tipo !== 'manha' && payload.tipo !== 'tarde') {
+    throw new ErroRequisicao('Tipo de aviso invalido.')
+  }
+
+  return { tipo: payload.tipo, origem: payload.origem, modo: 'legado' }
 }
 
 function dataSaoPaulo(data = new Date()) {
+  return dataLocal(data, TIME_ZONE)
+}
+
+function dataLocal(data = new Date(), timezone = TIME_ZONE) {
   const partes = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TIME_ZONE,
+    timeZone: timezone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -151,6 +186,12 @@ function somarDias(dataISO: string, dias: number) {
   const [ano, mes, dia] = dataISO.split('-').map(Number)
   const data = new Date(Date.UTC(ano, mes - 1, dia + dias, 12, 0, 0))
   return dataSaoPaulo(data)
+}
+
+function somarDiasLocal(dataISO: string, dias: number, timezone: string) {
+  const [ano, mes, dia] = dataISO.split('-').map(Number)
+  const data = new Date(Date.UTC(ano, mes - 1, dia + dias, 12, 0, 0))
+  return dataLocal(data, timezone)
 }
 
 function escapeHtml(valor: unknown): string {
@@ -197,6 +238,91 @@ function parseChats(valor?: string | null): ChatTelegram[] {
   }
 }
 
+function normalizarPrazo(valor: unknown) {
+  const prazoInformado = typeof valor === 'number'
+    ? valor
+    : Number.parseInt(String(valor ?? ''), 10)
+
+  return Number.isFinite(prazoInformado)
+    ? Math.max(1, Math.min(PRAZO_ALERTA_MAXIMO, Math.trunc(prazoInformado)))
+    : PRAZO_ALERTA_PADRAO
+}
+
+function timezoneValido(timezone: unknown) {
+  if (typeof timezone !== 'string' || timezone.trim() === '') return TIME_ZONE
+
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format(new Date())
+    return timezone
+  } catch {
+    return TIME_ZONE
+  }
+}
+
+function normalizarHorarios(valor: unknown) {
+  if (!Array.isArray(valor)) return []
+
+  return Array.from(new Set(
+    valor
+      .filter((horario): horario is string => typeof horario === 'string')
+      .map((horario) => horario.trim())
+      .filter((horario) => /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(horario)),
+  )).sort()
+}
+
+function parseAlertasConfig(valor: string | undefined, prazoLegado: number): ConfigAlertasTelegram {
+  const fallback = {
+    ativo: true,
+    prazo: prazoLegado,
+    horarios: [],
+    timezone: TIME_ZONE,
+  }
+
+  if (!valor) return fallback
+
+  try {
+    const config = JSON.parse(valor)
+    if (!config || typeof config !== 'object' || Array.isArray(config)) return fallback
+
+    const payload = config as Record<string, unknown>
+    return {
+      ativo: payload.ativo === true,
+      prazo: normalizarPrazo(payload.prazo_alerta_dias ?? prazoLegado),
+      horarios: normalizarHorarios(payload.horarios),
+      timezone: timezoneValido(payload.timezone),
+    }
+  } catch {
+    return fallback
+  }
+}
+
+function horarioParaMinutos(horario: string) {
+  const [hora, minuto] = horario.split(':').map(Number)
+  return hora * 60 + minuto
+}
+
+function horarioLocalEmMinutos(data: Date, timezone: string) {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(data)
+
+  const mapa = Object.fromEntries(partes.map((parte) => [parte.type, parte.value]))
+  return Number(mapa.hour) * 60 + Number(mapa.minute)
+}
+
+function slotsDevidos(config: ConfigAlertasTelegram, agora = new Date()) {
+  if (!config.ativo || config.horarios.length === 0) return []
+
+  const minutoAtual = horarioLocalEmMinutos(agora, config.timezone)
+  return config.horarios.filter((horario) => {
+    const minutoSlot = horarioParaMinutos(horario)
+    return minutoAtual >= minutoSlot && minutoAtual < minutoSlot + SCHEDULER_JANELA_MINUTOS
+  })
+}
+
 function linhaLancamento(lancamento: any, descricaoVencimento: string) {
   const conta = escapeHtml(lancamento.contas?.nome ?? 'Conta sem nome')
   const imovel = escapeHtml(obterNomeImovel(lancamento.contas))
@@ -241,24 +367,24 @@ async function listarWorkspacesParaCron() {
   return Array.from(new Set((data ?? []).map((config) => config.workspace_id as string)))
 }
 
-async function carregarConfiguracoesWorkspace(workspaceId: string) {
+async function carregarConfiguracoesWorkspace(workspaceId: string): Promise<ConfiguracoesWorkspace> {
   const { data, error } = await supabase
     .from('configuracoes')
     .select('chave, valor')
     .eq('workspace_id', workspaceId)
-    .in('chave', ['telegram_chats', 'prazo_alerta_dias'])
+    .in('chave', ['telegram_chats', 'prazo_alerta_dias', 'telegram_alertas_config'])
 
   if (error) throw error
 
-  const configuracoes = Object.fromEntries((data ?? []).map((config) => [config.chave, config.valor]))
-  const prazoInformado = Number.parseInt(configuracoes.prazo_alerta_dias ?? '', 10)
-  const prazo = Number.isFinite(prazoInformado)
-    ? Math.max(1, Math.min(PRAZO_ALERTA_MAXIMO, prazoInformado))
-    : PRAZO_ALERTA_PADRAO
+  const configuracoes = Object.fromEntries(
+    (data ?? []).map((config) => [config.chave, config.valor]),
+  ) as Record<string, string | undefined>
+  const prazo = normalizarPrazo(configuracoes.prazo_alerta_dias)
 
   return {
     chats: parseChats(configuracoes.telegram_chats),
     prazo,
+    alertas: parseAlertasConfig(configuracoes.telegram_alertas_config, prazo),
   }
 }
 
@@ -267,8 +393,11 @@ async function buscarLancamentosWorkspace(
   tipo: TipoAviso,
   hoje: string,
   prazo: number,
+  timezone = TIME_ZONE,
 ) {
-  const limite = tipo === 'manha' ? somarDias(hoje, prazo) : hoje
+  const limite = tipo === 'manha' || tipo === 'scheduler'
+    ? somarDiasLocal(hoje, prazo, timezone)
+    : hoje
   const { data, error } = await supabase
     .from('lancamentos')
     .select(`
@@ -291,12 +420,13 @@ async function buscarLancamentosWorkspace(
 function montarMensagem(tipo: TipoAviso, lancamentos: any[], hoje: string) {
   const vencidos = lancamentos.filter((lancamento) => lancamento.vencimento < hoje)
   const vencem = lancamentos.filter((lancamento) => lancamento.vencimento === hoje)
-  const proximos = tipo === 'manha'
+  const incluirProximos = tipo === 'manha' || tipo === 'scheduler'
+  const proximos = incluirProximos
     ? lancamentos.filter((lancamento) => lancamento.vencimento > hoje)
     : []
 
   if (tipo === 'tarde' && vencidos.length === 0 && vencem.length === 0) return null
-  if (tipo === 'manha' && lancamentos.length === 0) {
+  if (incluirProximos && lancamentos.length === 0) {
     return [
       '✅ <b>Tudo certo por aqui!</b>',
       '',
@@ -306,9 +436,11 @@ function montarMensagem(tipo: TipoAviso, lancamentos: any[], hoje: string) {
 
   const totalPendente = vencidos.length + vencem.length + proximos.length
   let totalExibido = 0
-  const linhas = tipo === 'manha'
+  const linhas = incluirProximos
     ? [
-      '🔔 <b>Bom dia! Aqui está seu resumo de contas</b>',
+      tipo === 'scheduler'
+        ? '🔔 <b>Resumo de contas</b>'
+        : '🔔 <b>Bom dia! Aqui está seu resumo de contas</b>',
       '',
       `Você tem ${totalPendente} conta(s) para acompanhar:`,
     ]
@@ -354,6 +486,7 @@ async function liberarExecucaoExpirada(
   tipo: TipoAviso,
   origem: OrigemAviso,
   dataReferencia: string,
+  slot: string | null = null,
 ) {
   const limite = new Date(Date.now() - EXECUCAO_EXPIRADA_MINUTOS * 60 * 1000).toISOString()
   let query = supabase
@@ -368,7 +501,11 @@ async function liberarExecucaoExpirada(
     .eq('status', 'iniciado')
     .lt('criado_em', limite)
 
-  if (origem === 'cron') {
+  if (origem === 'cron' && slot) {
+    query = query
+      .eq('slot', slot)
+      .eq('data_referencia', dataReferencia)
+  } else if (origem === 'cron') {
     query = query
       .eq('tipo', tipo)
       .eq('data_referencia', dataReferencia)
@@ -410,6 +547,7 @@ async function registrarExecucao(
   tipo: TipoAviso,
   origem: OrigemAviso,
   dataReferencia: string,
+  slot: string | null = null,
 ) {
   const { data, error } = await supabase
     .from('telegram_aviso_execucoes')
@@ -418,6 +556,7 @@ async function registrarExecucao(
       tipo,
       origem,
       data_referencia: dataReferencia,
+      slot,
       status: 'iniciado',
     })
     .select('id')
@@ -473,16 +612,23 @@ async function processarWorkspace(
   tipo: TipoAviso,
   origem: OrigemAviso,
   hoje: string,
+  opcoes: {
+    slot?: string | null
+    prazo?: number
+    timezone?: string
+    configuracoes?: ConfiguracoesWorkspace
+  } = {},
 ): Promise<ResultadoWorkspace> {
   let execucaoId: string | null = null
+  const slot = opcoes.slot ?? null
 
   try {
-    await liberarExecucaoExpirada(workspaceId, tipo, origem, hoje)
+    await liberarExecucaoExpirada(workspaceId, tipo, origem, hoje, slot)
     if (origem === 'manual') {
       await verificarCooldownManual(workspaceId)
     }
 
-    const registro = await registrarExecucao(workspaceId, tipo, origem, hoje)
+    const registro = await registrarExecucao(workspaceId, tipo, origem, hoje, slot)
     if (registro.duplicado) {
       return {
         workspaceId,
@@ -490,11 +636,15 @@ async function processarWorkspace(
         envios: 0,
         lancamentos: 0,
         status: 'duplicado',
+        slot: slot ?? undefined,
       }
     }
     execucaoId = registro.id
 
-    const { chats, prazo } = await carregarConfiguracoesWorkspace(workspaceId)
+    const configuracoes = opcoes.configuracoes ?? await carregarConfiguracoesWorkspace(workspaceId)
+    const { chats } = configuracoes
+    const prazo = opcoes.prazo ?? configuracoes.prazo
+    const timezone = opcoes.timezone ?? TIME_ZONE
     if (chats.length === 0) {
       await atualizarExecucao(execucaoId, workspaceId, 'sem_destinatarios', {
         total_chats: 0,
@@ -507,10 +657,11 @@ async function processarWorkspace(
         envios: 0,
         lancamentos: 0,
         status: 'sem_destinatarios',
+        slot: slot ?? undefined,
       }
     }
 
-    const lancamentos = await buscarLancamentosWorkspace(workspaceId, tipo, hoje, prazo)
+    const lancamentos = await buscarLancamentosWorkspace(workspaceId, tipo, hoje, prazo, timezone)
     const mensagem = montarMensagem(tipo, lancamentos, hoje)
     if (!mensagem) {
       await atualizarExecucao(execucaoId, workspaceId, 'sem_lancamentos', {
@@ -524,6 +675,7 @@ async function processarWorkspace(
         envios: 0,
         lancamentos: lancamentos.length,
         status: 'sem_lancamentos',
+        slot: slot ?? undefined,
       }
     }
 
@@ -545,6 +697,7 @@ async function processarWorkspace(
       envios,
       lancamentos: lancamentos.length,
       status: 'enviado',
+      slot: slot ?? undefined,
     }
   } catch (error) {
     if (execucaoId) {
@@ -553,6 +706,59 @@ async function processarWorkspace(
       }).catch(() => undefined)
     }
     throw error
+  }
+}
+
+async function processarScheduler() {
+  const workspaceIds = await listarWorkspacesParaCron()
+  const resultados: ResultadoWorkspace[] = []
+  let falhas = 0
+  let semConfiguracao = 0
+  let desativados = 0
+  let foraDaJanela = 0
+
+  for (const workspaceId of workspaceIds) {
+    try {
+      const configuracoes = await carregarConfiguracoesWorkspace(workspaceId)
+      const { alertas } = configuracoes
+
+      if (!alertas.ativo) {
+        desativados += 1
+        continue
+      }
+
+      if (alertas.horarios.length === 0) {
+        semConfiguracao += 1
+        continue
+      }
+
+      const slots = slotsDevidos(alertas)
+      if (slots.length === 0) {
+        foraDaJanela += 1
+        continue
+      }
+
+      const dataReferencia = dataLocal(new Date(), alertas.timezone)
+      for (const slot of slots) {
+        resultados.push(await processarWorkspace(workspaceId, 'scheduler', 'cron', dataReferencia, {
+          slot,
+          prazo: alertas.prazo,
+          timezone: alertas.timezone,
+          configuracoes,
+        }))
+      }
+    } catch {
+      falhas += 1
+    }
+  }
+
+  return {
+    workspaceIds,
+    resultados,
+    falhas,
+    semConfiguracao,
+    desativados,
+    foraDaJanela,
   }
 }
 
@@ -569,9 +775,31 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => null)
-    const { tipo, origem } = validarBody(body)
+    const { tipo, origem, modo } = validarBody(body)
     const autorizacao = await autorizar(req, origem)
     const hoje = dataSaoPaulo()
+
+    if (modo === 'scheduler') {
+      const scheduler = await processarScheduler()
+
+      return json({
+        ok: true,
+        modo,
+        origem,
+        workspaces: scheduler.workspaceIds.length,
+        processados: scheduler.resultados.length,
+        ignorados: scheduler.resultados.filter((resultado) => resultado.duplicado).length,
+        sem_configuracao: scheduler.semConfiguracao,
+        desativados: scheduler.desativados,
+        fora_da_janela: scheduler.foraDaJanela,
+        falhas: scheduler.falhas,
+        envios: scheduler.resultados.reduce((total, resultado) => total + resultado.envios, 0),
+      })
+    }
+
+    if (!tipo) {
+      throw new ErroRequisicao('Tipo de aviso invalido.')
+    }
 
     if (origem === 'manual') {
       const workspaceId = await obterWorkspaceUnicoDoUsuario(autorizacao.userId as string)
