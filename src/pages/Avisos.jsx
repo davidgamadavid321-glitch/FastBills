@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
-  Bell, Clock, FileText, Loader2, Plus, Minus, X, User, Tag, Send, ExternalLink,
+  Bell, Clock, FileText, Loader2, Plus, X, User, Tag, Send, ExternalLink,
   Droplets, Zap, Flame, Wifi, Shield, Home, CreditCard,
   Building2, Car, Smartphone, Package,
 } from 'lucide-react'
@@ -18,6 +18,12 @@ const ICONE_MAP = {
 }
 const ICONE_KEYS = Object.keys(ICONE_MAP)
 const LIMITE_ITENS_PREVIA = 15
+const ALERTAS_TIMEZONE = 'America/Sao_Paulo'
+const HORARIOS_PADRAO = {
+  '1': ['08:00'],
+  '2': ['08:00', '18:00'],
+  '3': ['08:00', '14:00', '20:00'],
+}
 
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -30,6 +36,66 @@ function somarDiasISO(dataISO, dias) {
 function formatarData(vencimento = '') {
   const [ano, mes, dia] = vencimento.split('-')
   return `${dia}/${mes}/${ano}`
+}
+
+function normalizarPrazo(valor, fallback = 3) {
+  const numero = Number.parseInt(String(valor ?? ''), 10)
+  return Number.isFinite(numero)
+    ? Math.max(1, Math.min(30, numero))
+    : fallback
+}
+
+function normalizarHorarios(horarios) {
+  if (!Array.isArray(horarios)) return []
+
+  return Array.from(new Set(
+    horarios
+      .filter(horario => typeof horario === 'string')
+      .map(horario => horario.trim())
+      .filter(horario => /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(horario)),
+  )).sort()
+}
+
+function inferirFrequencia(horarios) {
+  const normalizados = normalizarHorarios(horarios)
+  const entrada = normalizados.join('|')
+
+  for (const [frequencia, padrao] of Object.entries(HORARIOS_PADRAO)) {
+    if (entrada === padrao.join('|')) return frequencia
+  }
+
+  return 'personalizado'
+}
+
+function criarConfigAlertasPadrao(prazo = 3) {
+  return {
+    ativo: true,
+    prazo_alerta_dias: normalizarPrazo(prazo),
+    horarios: HORARIOS_PADRAO['2'],
+    timezone: ALERTAS_TIMEZONE,
+    versao: 1,
+  }
+}
+
+function parseConfigAlertas(valor, prazoLegado = 3) {
+  const fallback = criarConfigAlertasPadrao(prazoLegado)
+
+  if (!valor) return fallback
+
+  try {
+    const config = JSON.parse(valor)
+    if (!config || typeof config !== 'object' || Array.isArray(config)) return fallback
+
+    return {
+      ativo: config.ativo === true,
+      prazo_alerta_dias: normalizarPrazo(config.prazo_alerta_dias, fallback.prazo_alerta_dias),
+      horarios: normalizarHorarios(config.horarios),
+      timezone: ALERTAS_TIMEZONE,
+      versao: 1,
+    }
+  } catch {
+    return fallback
+  }
 }
 
 function titularAtual(conta) {
@@ -61,7 +127,7 @@ const STATUS_LABEL = {
 
 async function upsertConfig(chave, valor, workspaceId) {
   const atualizadoEm = new Date().toISOString()
-  const { data: atualizado } = await supabase
+  const { data: atualizado, error: erroUpdate } = await supabase
     .from('configuracoes')
     .update({ valor, atualizado_em: atualizadoEm })
     .eq('chave', chave)
@@ -69,13 +135,17 @@ async function upsertConfig(chave, valor, workspaceId) {
     .select('chave')
     .maybeSingle()
 
+  if (erroUpdate) throw erroUpdate
+
   if (atualizado) {
     return
   }
 
-  await supabase
+  const { error: erroInsert } = await supabase
     .from('configuracoes')
     .insert({ chave, valor, workspace_id: workspaceId, atualizado_em: atualizadoEm })
+
+  if (erroInsert) throw erroInsert
 }
 
 // ── Seção Cabeçalho ───────────────────────────────────────────
@@ -672,39 +742,170 @@ function SecaoTelegram() {
   )
 }
 
-// ── Seção: Prazo de alerta ────────────────────────────────────
+// ── Seção: Configuração dos alertas ───────────────────────────
 
-function SecaoPrazo({ prazo, onChange }) {
+function SecaoConfiguracaoAlertas({
+  config,
+  setConfig,
+  frequencia,
+  setFrequencia,
+  onSalvar,
+  salvando,
+  feedback,
+  erro,
+}) {
+  function atualizarConfig(campo, valor) {
+    setConfig(prev => ({ ...prev, [campo]: valor }))
+  }
+
+  function handleFrequenciaChange(novaFrequencia) {
+    setFrequencia(novaFrequencia)
+    if (novaFrequencia !== 'personalizado') {
+      atualizarConfig('horarios', HORARIOS_PADRAO[novaFrequencia])
+    }
+  }
+
+  function atualizarHorario(indice, valor) {
+    setConfig(prev => ({
+      ...prev,
+      horarios: prev.horarios.map((horario, i) => (i === indice ? valor : horario)),
+    }))
+  }
+
+  function adicionarHorario() {
+    setFrequencia('personalizado')
+    setConfig(prev => ({ ...prev, horarios: [...prev.horarios, '08:00'] }))
+  }
+
+  function removerHorario(indice) {
+    setFrequencia('personalizado')
+    setConfig(prev => ({
+      ...prev,
+      horarios: prev.horarios.filter((_, i) => i !== indice),
+    }))
+  }
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-sm shadow-slate-200/40">
       <SecaoHeader
-        icon={Bell}
-        titulo="Prazo de alerta"
-        descricao="Quantos dias antes do vencimento avisar"
+        icon={Clock}
+        titulo="Configuração dos alertas"
+        descricao="Defina quando este workspace recebe avisos automáticos"
       />
 
-      <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
-        <button
-          onClick={() => onChange(prazo - 1)}
-          disabled={prazo <= 1}
-          className="w-9 h-9 rounded-lg border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <Minus size={15} className="text-slate-600" />
-        </button>
+      <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 space-y-4">
+        <label className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-950">Alertas Telegram ativados</p>
+            <p className="text-xs leading-relaxed text-slate-500 mt-0.5">
+              Quando ativo, o scheduler usa os horários salvos abaixo.
+            </p>
+          </div>
+          <input
+            type="checkbox"
+            checked={config.ativo}
+            onChange={e => atualizarConfig('ativo', e.target.checked)}
+            className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+          />
+        </label>
 
-        <div className="text-center min-w-[96px]">
-          <p className="text-3xl font-black text-slate-950 leading-none tabular-nums">{prazo}</p>
-          <p className="text-xs font-medium text-slate-500 mt-1">{prazo === 1 ? 'dia antes' : 'dias antes'}</p>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-slate-600">
+            Avisar contas que vencem em até X dias
+          </label>
+          <input
+            type="number"
+            min="1"
+            max="30"
+            value={config.prazo_alerta_dias}
+            onChange={e => atualizarConfig('prazo_alerta_dias', e.target.value)}
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-slate-900"
+          />
         </div>
 
-        <button
-          onClick={() => onChange(prazo + 1)}
-          disabled={prazo >= 30}
-          className="w-9 h-9 rounded-lg border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <Plus size={15} className="text-slate-600" />
-        </button>
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-slate-600">Frequência</p>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              ['1', '1 vez ao dia'],
+              ['2', '2 vezes ao dia'],
+              ['3', '3 vezes ao dia'],
+              ['personalizado', 'Personalizado'],
+            ].map(([valor, label]) => (
+              <button
+                key={valor}
+                type="button"
+                onClick={() => handleFrequenciaChange(valor)}
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                  frequencia === valor
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold text-slate-600">Horários</p>
+            {frequencia === 'personalizado' && (
+              <button
+                type="button"
+                onClick={adicionarHorario}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                <Plus size={12} />
+                Adicionar
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {config.horarios.map((horario, indice) => (
+              <div key={`${indice}-${horario}`} className="flex items-center gap-2">
+                <input
+                  type="time"
+                  value={horario}
+                  onChange={e => atualizarHorario(indice, e.target.value)}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+                {frequencia === 'personalizado' && (
+                  <button
+                    type="button"
+                    onClick={() => removerHorario(indice)}
+                    className="h-9 w-9 rounded-lg border border-slate-200 bg-white text-slate-400 hover:bg-slate-50 hover:text-slate-700 flex items-center justify-center"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          {config.horarios.length === 0 && (
+            <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-xs text-slate-500">
+              Nenhum horário configurado.
+            </p>
+          )}
+          <p className="text-xs text-slate-500">
+            Horário local: {ALERTAS_TIMEZONE.replace('_', ' ')}.
+          </p>
+        </div>
       </div>
+
+      {erro && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{erro}</p>}
+      {feedback && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{feedback}</p>}
+
+      <button
+        type="button"
+        onClick={onSalvar}
+        disabled={salvando}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+      >
+        {salvando ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
+        {salvando ? 'Salvando...' : 'Salvar configuração'}
+      </button>
     </div>
   )
 }
@@ -854,6 +1055,11 @@ export default function Avisos() {
   const { workspaceId, loadingWorkspace, erroWorkspace } = useWorkspace()
   const [loadingCfg,        setLoadingCfg]        = useState(true)
   const [prazo,             setPrazo]              = useState(3)
+  const [alertasConfig,     setAlertasConfig]      = useState(() => criarConfigAlertasPadrao(3))
+  const [frequenciaAlertas, setFrequenciaAlertas]  = useState('2')
+  const [salvandoAlertas,   setSalvandoAlertas]    = useState(false)
+  const [feedbackAlertas,   setFeedbackAlertas]    = useState('')
+  const [erroAlertas,       setErroAlertas]        = useState('')
 
   const [titulares,         setTitulares]          = useState([])
   const [categorias,        setCategorias]         = useState([])
@@ -866,24 +1072,42 @@ export default function Avisos() {
   const [lancamentosPrevia, setLancamentosPrevia]  = useState([])
   const [loadingPrevia,     setLoadingPrevia]      = useState(true)
 
-  const prazoTimerRef = useRef(null)
-
   useEffect(() => {
     if (loadingWorkspace || erroWorkspace || !workspaceId) return
+
+    setLoadingCfg(true)
 
     // Configurações
     supabase
       .from('configuracoes')
       .select('chave, valor')
-      .eq('chave', 'prazo_alerta_dias')
       .eq('workspace_id', workspaceId)
-      .then(({ data }) => {
-        const cfg = Object.fromEntries((data ?? []).map(r => [r.chave, r.valor]))
-
-        if (cfg.prazo_alerta_dias) {
-          const v = parseInt(cfg.prazo_alerta_dias, 10)
-          if (!isNaN(v)) setPrazo(Math.max(1, Math.min(30, v)))
+      .in('chave', ['prazo_alerta_dias', 'telegram_alertas_config'])
+      .then(({ data, error }) => {
+        if (error) {
+          if (import.meta.env.DEV) {
+            console.error('Erro ao carregar configuração de alertas:', {
+              message: error?.message,
+              code: error?.code,
+              details: error?.details,
+              hint: error?.hint,
+              workspaceId,
+            })
+          }
+          setErroAlertas('Não foi possível carregar a configuração de alertas.')
+          setLoadingCfg(false)
+          return
         }
+
+        const cfg = Object.fromEntries((data ?? []).map(r => [r.chave, r.valor]))
+        const prazoLegado = normalizarPrazo(cfg.prazo_alerta_dias)
+        const configAlertas = parseConfigAlertas(cfg.telegram_alertas_config, prazoLegado)
+
+        setPrazo(configAlertas.prazo_alerta_dias)
+        setAlertasConfig(configAlertas)
+        setFrequenciaAlertas(inferirFrequencia(configAlertas.horarios))
+        setErroAlertas('')
+        setFeedbackAlertas('')
         setLoadingCfg(false)
       })
 
@@ -970,14 +1194,54 @@ export default function Avisos() {
       })
   }, [workspaceId, loadingWorkspace, erroWorkspace, loadingCfg, prazo])
 
-  function handlePrazoChange(novo) {
-    const clamped = Math.max(1, Math.min(30, novo))
-    setPrazo(clamped)
-    if (prazoTimerRef.current) clearTimeout(prazoTimerRef.current)
-    prazoTimerRef.current = setTimeout(
-      () => upsertConfig('prazo_alerta_dias', String(clamped), workspaceId),
-      500
-    )
+  async function handleSalvarAlertas() {
+    if (!workspaceId) {
+      setErroAlertas('Não foi possível identificar o espaço de trabalho. Recarregue a página e tente novamente.')
+      return
+    }
+
+    setSalvandoAlertas(true)
+    setErroAlertas('')
+    setFeedbackAlertas('')
+
+    try {
+      const prazoNormalizado = normalizarPrazo(alertasConfig.prazo_alerta_dias)
+      const horariosNormalizados = normalizarHorarios(alertasConfig.horarios)
+
+      if (alertasConfig.ativo && horariosNormalizados.length === 0) {
+        setErroAlertas('Informe pelo menos um horário para manter os alertas ativos.')
+        return
+      }
+
+      const payload = {
+        ativo: alertasConfig.ativo === true,
+        prazo_alerta_dias: prazoNormalizado,
+        horarios: horariosNormalizados,
+        timezone: ALERTAS_TIMEZONE,
+        versao: 1,
+      }
+
+      await upsertConfig('telegram_alertas_config', JSON.stringify(payload), workspaceId)
+      await upsertConfig('prazo_alerta_dias', String(prazoNormalizado), workspaceId)
+
+      setAlertasConfig(payload)
+      setFrequenciaAlertas(inferirFrequencia(horariosNormalizados))
+      setPrazo(prazoNormalizado)
+      setFeedbackAlertas('Configuração salva com sucesso.')
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Erro ao salvar configuração de alertas Telegram:', {
+          message: error?.message,
+          code: error?.code,
+          details: error?.details,
+          hint: error?.hint,
+          workspaceId,
+        })
+      }
+      setErroAlertas('Não foi possível salvar a configuração. Tente novamente.')
+    } finally {
+      setSalvandoAlertas(false)
+    }
   }
 
   if (erroWorkspace) {
@@ -1018,7 +1282,16 @@ export default function Avisos() {
         <div className="space-y-4">
           <SecaoTitulares titulares={titulares} setTitulares={setTitulares} />
           <SecaoTelegram />
-          <SecaoPrazo prazo={prazo} onChange={handlePrazoChange} />
+          <SecaoConfiguracaoAlertas
+            config={alertasConfig}
+            setConfig={setAlertasConfig}
+            frequencia={frequenciaAlertas}
+            setFrequencia={setFrequenciaAlertas}
+            onSalvar={handleSalvarAlertas}
+            salvando={salvandoAlertas}
+            feedback={feedbackAlertas}
+            erro={erroAlertas}
+          />
           <SecaoPreviaAviso lancamentos={lancamentosPrevia} loading={loadingPrevia} />
         </div>
 
