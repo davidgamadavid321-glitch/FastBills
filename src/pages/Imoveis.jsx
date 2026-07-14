@@ -19,11 +19,12 @@ const TIPO_LABEL = {
 
 // ── Sub-componentes ──────────────────────────────────────────
 
-function MenuBtn({ label, onClick, danger }) {
+function MenuBtn({ label, onClick, danger, disabled }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-4 py-2 text-sm transition-colors hover:bg-slate-50 ${
+      disabled={disabled}
+      className={`w-full text-left px-4 py-2 text-sm transition-colors hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed ${
         danger ? 'text-red-600' : 'text-slate-700'
       }`}
     >
@@ -32,7 +33,7 @@ function MenuBtn({ label, onClick, danger }) {
   )
 }
 
-function CardCentro({ centro, titulares, totalMensal, contasCount, onEditar, onAlterarStatus, onTrocarTitular, onVerContas }) {
+function CardCentro({ centro, titulares, totalMensal, contasCount, onEditar, onAlterarStatus, onTrocarTitular, onVerContas, alterandoStatus }) {
   const [menuAberto, setMenuAberto] = useState(false)
   const menuRef = useRef(null)
   const isAtivo = centro.status === 'ativo'
@@ -77,9 +78,10 @@ function CardCentro({ centro, titulares, totalMensal, contasCount, onEditar, onA
                 <MenuBtn label="Trocar titular" onClick={() => { onTrocarTitular(); setMenuAberto(false) }} />
                 <div className="h-px bg-slate-100 my-1" />
                 <MenuBtn
-                  label={isAtivo ? 'Desativar' : 'Ativar'}
+                  label={alterandoStatus ? 'Alterando...' : isAtivo ? 'Desativar' : 'Ativar'}
                   onClick={() => { onAlterarStatus(); setMenuAberto(false) }}
                   danger={isAtivo}
+                  disabled={alterandoStatus}
                 />
               </div>
             )}
@@ -135,6 +137,8 @@ export default function Imoveis() {
   const [todosOsTitulares, setTodosOsTitulares] = useState([])
   const [loading, setLoading]                   = useState(true)
   const [erroCarregamento, setErroCarregamento] = useState('')
+  const [erroStatus, setErroStatus]             = useState('')
+  const [alterandoStatusId, setAlterandoStatusId] = useState(null)
 
   const [modalCadastro, setModalCadastro]           = useState(false)
   const [modalEdicao, setModalEdicao]               = useState(null)
@@ -238,15 +242,29 @@ export default function Imoveis() {
 
   async function handleAlterarStatus(centro) {
     const novoStatus = centro.status === 'ativo' ? 'configuracao' : 'ativo'
-    const { data, error } = await supabase
-      .from('centros_custo')
-      .update({ status: novoStatus })
-      .eq('id', centro.id)
-      .eq('workspace_id', workspaceId)
-      .select()
-      .single()
-    if (!error) {
+
+    setErroStatus('')
+    setAlterandoStatusId(centro.id)
+
+    try {
+      const { data, error } = await supabase
+        .from('centros_custo')
+        .update({ status: novoStatus })
+        .eq('id', centro.id)
+        .eq('workspace_id', workspaceId)
+        .select()
+        .single()
+
+      if (error) throw error
+
       setCentros(prev => prev.map(c => (c.id === centro.id ? data : c)))
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Erro ao alterar status do imóvel:', error)
+      }
+      setErroStatus('Não foi possível alterar o status do imóvel. Tente novamente.')
+    } finally {
+      setAlterandoStatusId(null)
     }
   }
 
@@ -290,6 +308,12 @@ export default function Imoveis() {
         </button>
       </div>
 
+      {erroStatus && (
+        <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+          {erroStatus}
+        </div>
+      )}
+
       {/* Grade */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {centros.map(centro => (
@@ -303,6 +327,7 @@ export default function Imoveis() {
             onAlterarStatus={() => handleAlterarStatus(centro)}
             onTrocarTitular={() => setModalTrocarTitular(centro)}
             onVerContas={() => navigate('/contas', { state: { centroId: centro.id } })}
+            alterandoStatus={alterandoStatusId === centro.id}
           />
         ))}
 
