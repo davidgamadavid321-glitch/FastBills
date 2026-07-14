@@ -44,50 +44,30 @@ export default function ModalTrocarTitular({ centro, titulares, onClose, onSalvo
   async function handleConfirmar() {
     setErro('')
     setSalvando(true)
-    const hoje = localISODate(new Date())
 
-    for (const conta of contasAlteradas) {
-      const novoTitularId    = selecao[conta.id] || null
-      const titularAnteriorId = selecaoOriginal[conta.id] || null
+    try {
+      const hoje = localISODate(new Date())
 
-      // 1. Atualiza titular_id na conta
-      const { error: erroConta } = await supabase
-        .from('contas')
-        .update({ titular_id: novoTitularId })
-        .eq('id', conta.id)
-        .eq('workspace_id', workspaceId)
+      for (const conta of contasAlteradas) {
+        const novoTitularId = selecao[conta.id] || null
 
-      if (erroConta) {
-        if (import.meta.env.DEV) console.error('Erro ao trocar titular:', erroConta)
-        setErro('Não foi possível trocar o titular. Tente novamente.')
-        setSalvando(false)
-        return
-      }
-
-      // 2. Fecha o registro ativo em contas_titulares
-      if (titularAnteriorId) {
-        await supabase
-          .from('contas_titulares')
-          .update({ fim: hoje })
-          .eq('conta_id', conta.id)
-          .eq('workspace_id', workspaceId)
-          .is('fim', null)
-      }
-
-      // 3. Cria novo registro em contas_titulares
-      if (novoTitularId) {
-        await supabase.from('contas_titulares').insert({
-          conta_id:   conta.id,
-          titular_id: novoTitularId,
-          inicio:     hoje,
-          fim:        null,
-          workspace_id: workspaceId,
+        const { error } = await supabase.rpc('trocar_titular_conta', {
+          p_workspace_id: workspaceId,
+          p_conta_id: conta.id,
+          p_novo_titular_id: novoTitularId,
+          p_hoje: hoje,
         })
-      }
-    }
 
-    setSalvando(false)
-    onSalvo()
+        if (error) throw error
+      }
+
+      onSalvo()
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('Erro ao trocar titular:', error)
+      setErro('Não foi possível trocar o titular. Tente novamente.')
+    } finally {
+      setSalvando(false)
+    }
   }
 
   // Retorna o objeto titular selecionado para um conta (para mostrar cor)

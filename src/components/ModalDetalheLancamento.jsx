@@ -117,67 +117,56 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
   async function handleConfirmarTroca() {
     const ctAtivo = lancamento.contas?.contas_titulares?.find(ct => ct.fim === null)
     const titularAtualId = ctAtivo?.titular_id ?? lancamento.contas?.titular_id ?? null
-    if (novoTitularId === titularAtualId) { setTrocandoTitular(false); return }
+    const titularIdParaEnviar = novoTitularId || null
+    if (titularIdParaEnviar === titularAtualId) { setTrocandoTitular(false); return }
 
     setSalvandoTitular(true)
     setErro('')
-    const hoje = localISODate(new Date())
 
-    const { error: erroUpdate } = await supabase
-      .from('contas')
-      .update({ titular_id: novoTitularId })
-      .eq('id', lancamento.conta_id)
-      .eq('workspace_id', workspaceId)
+    try {
+      const hoje = localISODate(new Date())
 
-    if (erroUpdate) {
-      if (import.meta.env.DEV) console.error('Erro ao trocar titular:', erroUpdate)
+      const { error } = await supabase.rpc('trocar_titular_conta', {
+        p_workspace_id: workspaceId,
+        p_conta_id: lancamento.conta_id,
+        p_novo_titular_id: titularIdParaEnviar,
+        p_hoje: hoje,
+      })
+
+      if (error) throw error
+
+      const novoTitular = titularIdParaEnviar
+        ? titularesDisponiveis.find(t => t.id === titularIdParaEnviar)
+        : null
+      const historicosFechados = lancamento.contas?.contas_titulares?.map(ct =>
+        ct.fim === null ? { ...ct, fim: hoje } : ct
+      ) ?? []
+      const novoRegistroCT = titularIdParaEnviar
+        ? [{
+            titular_id: titularIdParaEnviar,
+            fim: null,
+            titulares: { nome: novoTitular?.nome ?? '', cor: novoTitular?.cor ?? null },
+          }]
+        : []
+      const lancamentoAtualizado = {
+        ...lancamento,
+        contas: {
+          ...lancamento.contas,
+          titular_id: titularIdParaEnviar,
+          titulares: novoTitular ? { nome: novoTitular.nome ?? '', cor: novoTitular.cor ?? null } : null,
+          contas_titulares: [...historicosFechados, ...novoRegistroCT],
+        },
+      }
+
+      setLancamento(lancamentoAtualizado)
+      onAtualizado(lancamentoAtualizado)
+      setTrocandoTitular(false)
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('Erro ao trocar titular:', error)
       setErro('Não foi possível trocar o titular. Tente novamente.')
+    } finally {
       setSalvandoTitular(false)
-      return
     }
-
-    if (titularAtualId) {
-      await supabase
-        .from('contas_titulares')
-        .update({ fim: hoje })
-        .eq('conta_id', lancamento.conta_id)
-        .eq('workspace_id', workspaceId)
-        .is('fim', null)
-    }
-
-    await supabase.from('contas_titulares').insert({
-      conta_id:   lancamento.conta_id,
-      titular_id: novoTitularId,
-      inicio:     hoje,
-      fim:        null,
-      workspace_id: workspaceId,
-    })
-
-    const novoTitular = titularesDisponiveis.find(t => t.id === novoTitularId)
-    const novoRegistroCT = {
-      titular_id: novoTitularId,
-      fim: null,
-      titulares: { nome: novoTitular?.nome ?? '', cor: novoTitular?.cor ?? null },
-    }
-    const lancamentoAtualizado = {
-      ...lancamento,
-      contas: {
-        ...lancamento.contas,
-        titular_id: novoTitularId,
-        titulares: { nome: novoTitular?.nome ?? '', cor: novoTitular?.cor ?? null },
-        contas_titulares: [
-          ...(lancamento.contas?.contas_titulares?.map(ct =>
-            ct.fim === null ? { ...ct, fim: hoje } : ct
-          ) ?? []),
-          novoRegistroCT,
-        ],
-      },
-    }
-
-    setLancamento(lancamentoAtualizado)
-    onAtualizado(lancamentoAtualizado)
-    setSalvandoTitular(false)
-    setTrocandoTitular(false)
   }
 
   // ── Exclusão ──
@@ -190,43 +179,53 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
 
   async function excluirSoEste() {
     setExcluindo(true)
-    const { error } = await supabase
-      .from('lancamentos')
-      .delete()
-      .eq('id', lancamento.id)
-      .eq('workspace_id', workspaceId)
-    setExcluindo(false)
-    if (error) {
+
+    try {
+      const { error } = await supabase
+        .from('lancamentos')
+        .delete()
+        .eq('id', lancamento.id)
+        .eq('workspace_id', workspaceId)
+
+      if (error) throw error
+
+      onExcluido?.(lancamento.id)
+      onClose()
+    } catch (error) {
       if (import.meta.env.DEV) console.error('Erro ao excluir lançamento:', error)
       setErro('Não foi possível excluir o lançamento. Tente novamente.')
-      return
+    } finally {
+      setExcluindo(false)
     }
-    onExcluido?.(lancamento.id)
-    onClose()
   }
 
   async function excluirTodosFuturos() {
     setExcluindo(true)
-    const hoje = localISODate(new Date())
-    const { error: e1 } = await supabase
-      .from('lancamentos')
-      .delete()
-      .eq('conta_id', lancamento.conta_id)
-      .eq('workspace_id', workspaceId)
-      .gte('vencimento', hoje)
-    const { error: e2 } = await supabase
-      .from('lancamentos')
-      .delete()
-      .eq('id', lancamento.id)
-      .eq('workspace_id', workspaceId)
-    setExcluindo(false)
-    if (e1 || e2) {
-      if (import.meta.env.DEV) console.error('Erro ao excluir lançamentos:', e1 || e2)
+
+    try {
+      const hoje = localISODate(new Date())
+      const { error: e1 } = await supabase
+        .from('lancamentos')
+        .delete()
+        .eq('conta_id', lancamento.conta_id)
+        .eq('workspace_id', workspaceId)
+        .gte('vencimento', hoje)
+      const { error: e2 } = await supabase
+        .from('lancamentos')
+        .delete()
+        .eq('id', lancamento.id)
+        .eq('workspace_id', workspaceId)
+
+      if (e1 || e2) throw e1 || e2
+
+      onExcluido?.(lancamento.id)
+      onClose()
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('Erro ao excluir lançamentos:', error)
       setErro('Não foi possível excluir o lançamento. Tente novamente.')
-      return
+    } finally {
+      setExcluindo(false)
     }
-    onExcluido?.(lancamento.id)
-    onClose()
   }
 
   const recorrenciaMultipla = ['mensal', 'anual'].includes(lancamento.contas?.recorrencia)
@@ -263,37 +262,41 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
 
     setUploadando(true)
 
-    const { error: erroUpload } = await supabase.storage
-      .from('comprovantes')
-      .upload(caminho, file, { upsert: true, contentType: 'application/pdf' })
+    try {
+      const { error: erroUpload } = await supabase.storage
+        .from('comprovantes')
+        .upload(caminho, file, { upsert: true, contentType: 'application/pdf' })
 
-    if (erroUpload) {
-      if (import.meta.env.DEV) console.error('Erro ao enviar comprovante:', erroUpload)
-      setErro('Não foi possível enviar o comprovante. Tente novamente.')
-      setUploadando(false)
-      e.target.value = ''
-      return
-    }
+      if (erroUpload) {
+        if (import.meta.env.DEV) console.error('Erro ao enviar comprovante:', erroUpload)
+        setErro('Não foi possível enviar o comprovante. Tente novamente.')
+        return
+      }
 
-    const { error: erroUpdate } = await supabase
-      .from('lancamentos')
-      .update({ pdf_url: caminho })
-      .eq('id', lancamento.id)
-      .eq('workspace_id', workspaceId)
+      const { error: erroUpdate } = await supabase
+        .from('lancamentos')
+        .update({ pdf_url: caminho })
+        .eq('id', lancamento.id)
+        .eq('workspace_id', workspaceId)
 
-    setUploadando(false)
-    e.target.value = ''
+      if (erroUpdate) {
+        if (import.meta.env.DEV) console.error('Erro ao salvar comprovante:', erroUpdate)
+        if (lancamento.pdf_url !== caminho) {
+          await supabase.storage.from('comprovantes').remove([caminho])
+        }
+        setErro('O comprovante foi enviado, mas não foi possível salvar. Tente novamente.')
+        return
+      }
 
-    if (!erroUpdate) {
       const atualizado = { ...lancamento, pdf_url: caminho }
       setLancamento(atualizado)
       onAtualizado(atualizado)
-    } else {
-      if (import.meta.env.DEV) console.error('Erro ao salvar comprovante:', erroUpdate)
-      if (lancamento.pdf_url !== caminho) {
-        await supabase.storage.from('comprovantes').remove([caminho])
-      }
-      setErro('O comprovante foi enviado, mas não foi possível salvar. Tente novamente.')
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('Erro ao enviar comprovante:', error)
+      setErro('Não foi possível enviar o comprovante. Tente novamente.')
+    } finally {
+      setUploadando(false)
+      e.target.value = ''
     }
   }
 
@@ -313,18 +316,21 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
     }
 
     setAbrindoPDF(true)
-    const { data, error } = await supabase.storage
-      .from('comprovantes')
-      .createSignedUrl(lancamento.pdf_url, 120)
-    setAbrindoPDF(false)
 
-    if (error || !data?.signedUrl) {
+    try {
+      const { data, error } = await supabase.storage
+        .from('comprovantes')
+        .createSignedUrl(lancamento.pdf_url, 120)
+
+      if (error || !data?.signedUrl) throw error ?? new Error('URL assinada ausente')
+
+      window.open(data.signedUrl, '_blank')
+    } catch (error) {
       if (import.meta.env.DEV) console.error('Erro ao abrir comprovante:', error)
       setErro('Não foi possível abrir o comprovante. Tente novamente.')
-      return
+    } finally {
+      setAbrindoPDF(false)
     }
-
-    window.open(data.signedUrl, '_blank')
   }
 
   // ── Confirmar pagamento ──
@@ -333,39 +339,40 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
     setMarcandoPago(true)
     setErro('')
 
-    const { data: { user } } = await supabase.auth.getUser()
-    const hoje = localISODate(new Date())
-    const alteradoPor = user?.user_metadata?.full_name || user?.email || ''
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const hoje = localISODate(new Date())
+      const alteradoPor = user?.user_metadata?.full_name || user?.email || ''
 
-    const { error } = await supabase
-      .from('lancamentos')
-      .update({
+      const { error } = await supabase
+        .from('lancamentos')
+        .update({
+          status: 'pago',
+          data_pagamento: hoje,
+          alterado_por: alteradoPor,
+          alterado_em: new Date().toISOString(),
+        })
+        .eq('id', lancamento.id)
+        .eq('workspace_id', workspaceId)
+
+      if (error) throw error
+
+      const atualizado = {
+        ...lancamento,
         status: 'pago',
         data_pagamento: hoje,
         alterado_por: alteradoPor,
         alterado_em: new Date().toISOString(),
-      })
-      .eq('id', lancamento.id)
-      .eq('workspace_id', workspaceId)
+      }
 
-    setMarcandoPago(false)
-
-    if (error) {
+      onAtualizado(atualizado)
+      onClose()
+    } catch (error) {
       if (import.meta.env.DEV) console.error('Erro ao marcar lançamento como pago:', error)
       setErro('Não foi possível marcar este lançamento como pago. Tente novamente.')
-      return
+    } finally {
+      setMarcandoPago(false)
     }
-
-    const atualizado = {
-      ...lancamento,
-      status: 'pago',
-      data_pagamento: hoje,
-      alterado_por: alteradoPor,
-      alterado_em: new Date().toISOString(),
-    }
-
-    onAtualizado(atualizado)
-    onClose()
   }
 
   return (
@@ -419,6 +426,7 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
                   onChange={e => setNovoTitularId(e.target.value)}
                   className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition"
                 >
+                  <option value="">Sem titular</option>
                   {titularesDisponiveis.map(t => (
                     <option key={t.id} value={t.id}>{t.nome}</option>
                   ))}
@@ -433,7 +441,7 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
                   </button>
                   <button
                     onClick={handleConfirmarTroca}
-                    disabled={salvandoTitular || !novoTitularId}
+                    disabled={salvandoTitular}
                     className="flex-1 py-2 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {salvandoTitular && <Loader2 size={14} className="animate-spin" />}

@@ -37,22 +37,24 @@ export default function ModalFormCentro({ centro, onClose, onSalvo }) {
     setErro('')
     setSalvando(true)
 
-    const payload = { nome: form.nome.trim(), tipo: form.tipo }
-    if (isEdicao) payload.status = form.status
+    try {
+      const payload = { nome: form.nome.trim(), tipo: form.tipo }
+      if (isEdicao) payload.status = form.status
 
-    const query = isEdicao
-      ? supabase.from('centros_custo').update(payload).eq('id', centro.id).eq('workspace_id', workspaceId).select().single()
-      : supabase.from('centros_custo').insert({ ...payload, status: 'ativo', workspace_id: workspaceId }).select().single()
+      const query = isEdicao
+        ? supabase.from('centros_custo').update(payload).eq('id', centro.id).eq('workspace_id', workspaceId).select().single()
+        : supabase.from('centros_custo').insert({ ...payload, status: 'ativo', workspace_id: workspaceId }).select().single()
 
-    const { data, error } = await query
-    setSalvando(false)
+      const { data, error } = await query
+      if (error) throw error
 
-    if (error) {
+      onSalvo(data)
+    } catch (error) {
       if (import.meta.env.DEV) console.error('Erro ao salvar imóvel:', error)
       setErro('Não foi possível salvar o imóvel. Tente novamente.')
-      return
+    } finally {
+      setSalvando(false)
     }
-    onSalvo(data)
   }
 
   return (

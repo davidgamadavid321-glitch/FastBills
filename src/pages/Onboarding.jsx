@@ -57,6 +57,7 @@ export default function Onboarding() {
   const [nomeTitular,        setNomeTitular]        = useState('')
   const [corTitular,         setCorTitular]         = useState(CORES[0])
   const [salvandoTitular,    setSalvandoTitular]    = useState(false)
+  const [erroTitular,        setErroTitular]        = useState('')
 
   const [adicionandoCategoria, setAdicionandoCategoria] = useState(false)
   const [nomeCategoria,        setNomeCategoria]        = useState('')
@@ -86,19 +87,61 @@ export default function Onboarding() {
   }
 
   async function handleAdicionarTitular() {
-    if (!nomeTitular.trim()) return
+    const nomeAparado = nomeTitular.trim()
+
+    if (!nomeAparado) {
+      setErroTitular('Informe o nome do titular.')
+      return
+    }
+    if (!workspaceId) {
+      setErroTitular('Não foi possível identificar o espaço de trabalho. Recarregue a página e tente novamente.')
+      return
+    }
+
     setSalvandoTitular(true)
-    const { data, error } = await supabase
-      .from('titulares')
-      .insert({ nome: nomeTitular.trim(), cor: corTitular, workspace_id: workspaceId })
-      .select()
-      .single()
-    setSalvandoTitular(false)
-    if (error) return
-    setTitulares(prev => [...prev, data])
-    setNomeTitular('')
-    setCorTitular(CORES[0])
-    setAdicionandoTitular(false)
+    setErroTitular('')
+
+    const payload = {
+      nome: nomeAparado,
+      cor: corTitular || CORES[0],
+      workspace_id: workspaceId,
+    }
+
+    if (import.meta.env.DEV) {
+      console.log('Payload titular:', {
+        nome: payload.nome,
+        cor: payload.cor,
+        workspace_id: payload.workspace_id,
+      })
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('titulares')
+        .insert(payload)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setTitulares(prev => [...prev, data])
+      setNomeTitular('')
+      setCorTitular(CORES[0])
+      setAdicionandoTitular(false)
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Erro ao criar titular:', {
+          message: error?.message,
+          code: error?.code,
+          details: error?.details,
+          hint: error?.hint,
+          workspaceId,
+        })
+      }
+      setErroTitular('Não foi possível criar o titular. Tente novamente.')
+    } finally {
+      setSalvandoTitular(false)
+    }
   }
 
   async function handleAdicionarCategoria() {
@@ -219,10 +262,12 @@ export default function Onboarding() {
                     />
                   ))}
                 </div>
+                {erroTitular && <p className="text-xs text-red-500">{erroTitular}</p>}
                 <div className="flex gap-2">
                   <button
-                    onClick={() => { setAdicionandoTitular(false); setNomeTitular('') }}
-                    className="flex-1 py-1.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                    onClick={() => { setAdicionandoTitular(false); setNomeTitular(''); setErroTitular('') }}
+                    disabled={salvandoTitular}
+                    className="flex-1 py-1.5 border border-slate-200 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
                   >
                     Cancelar
                   </button>
@@ -240,7 +285,7 @@ export default function Onboarding() {
               </div>
             ) : (
               <button
-                onClick={() => setAdicionandoTitular(true)}
+                onClick={() => { setAdicionandoTitular(true); setErroTitular('') }}
                 className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
               >
                 <Plus size={14} />

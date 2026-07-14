@@ -143,18 +143,25 @@ export default function ModalFormConta({
     const novoTitularId   = form.titular_id  || null
     const ctAtivo         = conta?.contas_titulares?.find(ct => ct.fim === null)
     const titularAnterior = ctAtivo?.titular_id ?? conta?.titular_id ?? null
+    const titularMudou    = isEdicao && novoTitularId !== titularAnterior
 
     const payload = {
       nome,
       categoria_id:     categoriaSelecionada.id,
       centro_id:        centroIdFinal,
-      titular_id:       novoTitularId,
       recorrencia:      form.recorrencia,
       dia_vencimento:   dia,
       mes_vencimento:   mesVencimento,
       valor_referencia: valorReferencia,
       status_contrato:  form.status_contrato,
       workspace_id:     workspaceId,
+    }
+
+    // Na edição, quem grava titular_id é a RPC trocar_titular_conta (abaixo),
+    // que também gerencia o histórico em contas_titulares. Incluir aqui
+    // faria a RPC ler o valor já atualizado e achar que nada mudou.
+    if (!isEdicao) {
+      payload.titular_id = novoTitularId
     }
 
     const select = `
@@ -176,9 +183,20 @@ export default function ModalFormConta({
       const { data, error } = await query
       if (error) throw error
 
-      const titularMudou = novoTitularId !== titularAnterior
+      if (titularMudou) {
+        const { error: erroTroca } = await supabase.rpc('trocar_titular_conta', {
+          p_workspace_id: workspaceId,
+          p_conta_id: conta.id,
+          p_novo_titular_id: novoTitularId,
+          p_hoje: hoje,
+        })
 
-      if (!isEdicao && novoTitularId) {
+        if (erroTroca) {
+          registrarErroDesenvolvimento('Erro ao trocar titular da conta:', erroTroca)
+          setErro('A conta foi salva, mas não foi possível trocar o titular. Tente novamente.')
+          return
+        }
+      } else if (!isEdicao && novoTitularId) {
         const { error: erroPrimeiroHistorico } = await supabase.from('contas_titulares').insert({
           conta_id:   data.id,
           titular_id: novoTitularId,
@@ -188,28 +206,6 @@ export default function ModalFormConta({
         })
 
         if (erroPrimeiroHistorico) throw erroPrimeiroHistorico
-      } else if (isEdicao && titularMudou) {
-        if (titularAnterior) {
-          const { error: erroFecharHistorico } = await supabase
-            .from('contas_titulares')
-            .update({ fim: hoje })
-            .eq('conta_id', conta.id)
-            .eq('workspace_id', workspaceId)
-            .is('fim', null)
-
-          if (erroFecharHistorico) throw erroFecharHistorico
-        }
-        if (novoTitularId) {
-          const { error: erroAbrirHistorico } = await supabase.from('contas_titulares').insert({
-            conta_id:   conta.id,
-            titular_id: novoTitularId,
-            inicio:     hoje,
-            fim:        null,
-            workspace_id: workspaceId,
-          })
-
-          if (erroAbrirHistorico) throw erroAbrirHistorico
-        }
       }
 
       const { data: atualizado, error: erroAtualizar } = await supabase
