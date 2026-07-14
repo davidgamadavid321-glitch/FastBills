@@ -36,13 +36,26 @@ function mesAtual() {
 function Layout({ user, vencidos }) {
   const location = useLocation()
   const navigate = useNavigate()
+  const [saindo, setSaindo] = useState(false)
+  const [erroSair, setErroSair] = useState('')
 
   const currentLabel = NAV.find((item) => item.path === location.pathname)?.label ?? 'Dashboard'
   const userInitial = user?.email?.[0]?.toUpperCase() ?? 'U'
 
   async function handleSignOut() {
-    await supabase.auth.signOut()
-    navigate('/login')
+    setErroSair('')
+    setSaindo(true)
+
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+      navigate('/login')
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('Erro ao sair:', error)
+      setErroSair('Não foi possível sair. Tente novamente.')
+    } finally {
+      setSaindo(false)
+    }
   }
 
   return (
@@ -95,13 +108,19 @@ function Layout({ user, vencidos }) {
             </span>
             <button
               onClick={handleSignOut}
+              disabled={saindo}
               title="Sair"
-              className="text-slate-400 hover:text-slate-700 transition-colors"
+              className="text-slate-400 hover:text-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Settings size={15} />
             </button>
           </div>
         </div>
+        {erroSair && (
+          <div className="px-4 pb-2">
+            <p className="text-xs text-red-500 text-right">{erroSair}</p>
+          </div>
+        )}
       </header>
 
       {/* Conteúdo principal */}
@@ -236,15 +255,29 @@ export default function App() {
   const [vencidos, setVencidos] = useState(0)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-    })
+    let ativo = true
+
+    async function carregarSessao() {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        if (error) throw error
+        if (ativo) setUser(session?.user ?? null)
+      } catch (error) {
+        if (import.meta.env.DEV) console.error('Erro ao carregar sessão:', error)
+        if (ativo) setUser(null)
+      }
+    }
+
+    carregarSessao()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      ativo = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   if (user === undefined) {

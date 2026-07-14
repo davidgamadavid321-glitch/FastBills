@@ -15,18 +15,24 @@ export default function Login() {
     setErro('')
     setCarregando(true)
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password: senha,
-    })
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password: senha,
+      })
 
-    if (error) {
-      setErro('E-mail ou senha inválidos.')
-    } else {
+      if (error) {
+        setErro('E-mail ou senha inválidos.')
+        return
+      }
+
       navigate('/')
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('Erro ao fazer login:', error)
+      setErro('Não foi possível entrar. Tente novamente.')
+    } finally {
+      setCarregando(false)
     }
-
-    setCarregando(false)
   }
 
   return (
