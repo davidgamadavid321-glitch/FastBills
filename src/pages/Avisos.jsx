@@ -82,11 +82,13 @@ async function upsertConfig(chave, valor, workspaceId) {
 
 function SecaoHeader({ icon: Icon, titulo, descricao }) {
   return (
-    <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
-      <Icon size={16} className="text-slate-500 shrink-0 mt-0.5" />
-      <div>
-        <h2 className="text-sm font-bold text-slate-900">{titulo}</h2>
-        {descricao && <p className="text-xs text-slate-500 mt-0.5">{descricao}</p>}
+    <div className="flex items-start gap-3 pb-4 border-b border-slate-100">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50">
+        <Icon size={15} className="text-slate-600" />
+      </div>
+      <div className="min-w-0">
+        <h2 className="text-sm font-semibold text-slate-950">{titulo}</h2>
+        {descricao && <p className="text-xs leading-relaxed text-slate-500 mt-0.5">{descricao}</p>}
       </div>
     </div>
   )
@@ -177,7 +179,7 @@ function SecaoTitulares({ titulares, setTitulares }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+    <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-sm shadow-slate-200/40">
       <SecaoHeader
         icon={User}
         titulo="Titulares"
@@ -189,11 +191,11 @@ function SecaoTitulares({ titulares, setTitulares }) {
           {titulares.map(t => (
             <div
               key={t.id}
-              className="flex items-center justify-between gap-3 bg-slate-50 rounded-xl px-3 py-2.5"
+              className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5"
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <span
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0"
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0 shadow-sm"
                   style={{ backgroundColor: t.cor ?? '#64748b' }}
                 >
                   {(t.nome ?? '?')[0].toUpperCase()}
@@ -207,7 +209,7 @@ function SecaoTitulares({ titulares, setTitulares }) {
               </div>
               <button
                 onClick={() => handleRemover(t.id)}
-                className="p-1 rounded-lg hover:bg-slate-200 transition-colors shrink-0"
+                className="p-1 rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors shrink-0"
               >
                 <X size={14} className="text-slate-400" />
               </button>
@@ -219,7 +221,7 @@ function SecaoTitulares({ titulares, setTitulares }) {
       {erroRemover && <p className="text-xs text-red-500">{erroRemover}</p>}
 
       {adicionando ? (
-        <div className="space-y-2.5 border border-slate-200 rounded-xl p-3">
+        <div className="space-y-2.5 border border-slate-200 rounded-xl p-3 bg-slate-50/50">
           <input
             type="text"
             value={nome}
@@ -265,7 +267,7 @@ function SecaoTitulares({ titulares, setTitulares }) {
       ) : (
         <button
           onClick={() => { setAdicionando(true); setErroRemover(''); setErroAdicionar('') }}
-          className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900 transition-colors"
         >
           <Plus size={14} />
           Adicionar titular
@@ -317,7 +319,7 @@ function SecaoCategorias({ categorias, setCategorias }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+    <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-sm shadow-slate-200/40">
       <SecaoHeader
         icon={Tag}
         titulo="Categorias"
@@ -330,7 +332,7 @@ function SecaoCategorias({ categorias, setCategorias }) {
           return (
             <div
               key={cat.id}
-              className="relative rounded-2xl border border-slate-200 p-3 flex flex-col items-center gap-1.5 bg-white"
+              className="relative rounded-xl border border-slate-200 p-3 flex flex-col items-center gap-1.5 bg-white shadow-sm shadow-slate-200/30"
             >
               <Ic size={18} className="text-slate-500" />
               <span className="text-xs font-semibold text-slate-700 text-center leading-tight line-clamp-2">
@@ -396,7 +398,7 @@ function SecaoCategorias({ categorias, setCategorias }) {
         ) : (
           <button
             onClick={() => { setAdicionando(true); setErroRemover('') }}
-            className="rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-1.5 p-3 text-slate-400 hover:border-slate-400 hover:text-slate-600 transition-colors min-h-[80px]"
+            className="rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center gap-1.5 p-3 text-slate-400 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700 transition-colors min-h-[80px]"
           >
             <Plus size={16} />
             <span className="text-[11px] font-bold">Nova</span>
@@ -522,32 +524,45 @@ function SecaoTelegram() {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+    <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-sm shadow-slate-200/40">
       <SecaoHeader
         icon={Bell}
-        titulo="Notificações Telegram"
-        descricao="Avisos de vencimento enviados via bot do Telegram"
+        titulo="Canal Telegram"
+        descricao="Conexão segura para envio dos avisos de vencimento"
       />
 
-      <div className="bg-slate-50 rounded-xl p-3 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-900">
-              {telegramConectado ? 'Telegram conectado' : 'Telegram não conectado'}
-            </p>
-            <p className="text-xs text-slate-500 mt-0.5">
+      <div className={`rounded-xl border p-4 space-y-3 ${
+        telegramConectado
+          ? 'border-emerald-200 bg-emerald-50/50'
+          : 'border-slate-200 bg-slate-50'
+      }`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-slate-950">
+                {telegramConectado ? 'Telegram conectado' : 'Telegram pendente'}
+              </p>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                telegramConectado
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'bg-slate-200 text-slate-600'
+              }`}>
+                {telegramConectado ? 'Ativo' : 'Sem chat'}
+              </span>
+            </div>
+            <p className="text-xs leading-relaxed text-slate-600">
               {telegramConectado
-                ? 'Este espaço já possui um chat apto a receber avisos.'
-                : 'Gere um código temporário e envie no bot para conectar.'}
+                ? 'Este espaço já possui chat autorizado para receber avisos.'
+                : 'Gere um código temporário e envie no bot para autorizar este espaço.'}
             </p>
           </div>
-          <span className={`shrink-0 w-2.5 h-2.5 rounded-full ${telegramConectado ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+          <span className={`mt-1 shrink-0 w-2.5 h-2.5 rounded-full ${telegramConectado ? 'bg-emerald-500' : 'bg-slate-300'}`} />
         </div>
 
         <button
           onClick={handleGerarCodigo}
           disabled={gerandoCodigo || !workspaceId}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+          className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
         >
           {gerandoCodigo ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
           {gerandoCodigo ? 'Gerando...' : 'Gerar código de conexão'}
@@ -556,17 +571,17 @@ function SecaoTelegram() {
         {erroCodigo && <p className="text-xs text-red-500">{erroCodigo}</p>}
 
         {codigoConexao && (
-          <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+          <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-3 shadow-sm shadow-slate-200/40">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-medium text-slate-500">Código</p>
-                <p className="text-lg font-black text-slate-900 tracking-normal font-mono">{codigoConexao.code}</p>
+                <p className="text-lg font-black text-slate-950 tracking-normal font-mono tabular-nums">{codigoConexao.code}</p>
               </div>
               {expiracaoCodigo && (
-                <p className="text-xs text-slate-500 shrink-0">Expira às {expiracaoCodigo}</p>
+                <p className="text-xs text-slate-500 shrink-0 tabular-nums">Expira às {expiracaoCodigo}</p>
               )}
             </div>
-            <div className="rounded-lg bg-slate-100 px-3 py-2">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
               <p className="text-xs text-slate-500">Envie no bot</p>
               <p className="text-sm font-mono font-semibold text-slate-900 break-all">{comandoConexao}</p>
             </div>
@@ -580,7 +595,7 @@ function SecaoTelegram() {
                 <ExternalLink size={14} />
                 Abrir bot com código
               </a>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs leading-relaxed text-slate-500">
                 Se o link não preencher o código, envie manualmente no bot: <span className="font-mono font-semibold text-slate-700">{comandoConexao}</span>
               </p>
             </div>
@@ -600,21 +615,23 @@ function SecaoTelegram() {
         )}
       </div>
 
-      {/* Lista de usuários cadastrados */}
       {loadingChats ? (
         <div className="flex justify-center py-2">
           <Loader2 size={16} className="animate-spin text-slate-300" />
         </div>
       ) : chatsValidos.length > 0 ? (
         <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Chats autorizados
+          </p>
           {chatsValidos.map(c => (
             <div
               key={c.chat_id}
-              className="flex items-center justify-between gap-3 bg-slate-50 rounded-xl px-3 py-2.5"
+              className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5"
             >
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-900 truncate">{c.nome}</p>
-                <p className="text-xs text-slate-400 font-mono mt-0.5">{c.chat_id}</p>
+                <p className="text-xs text-slate-400 font-mono mt-0.5 tabular-nums">{c.chat_id}</p>
               </div>
               <button
                 onClick={() => handleRemover(c.chat_id)}
@@ -629,15 +646,16 @@ function SecaoTelegram() {
           ))}
         </div>
       ) : (
-        <p className="text-xs text-slate-400">Nenhum usuario cadastrado ainda.</p>
+        <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+          Nenhum chat autorizado ainda.
+        </p>
       )}
 
-      {/* Botão enviar */}
-      <div className="pt-1 border-t border-slate-100 space-y-1.5">
+      <div className="pt-4 border-t border-slate-100 space-y-2">
         <button
           onClick={handleEnviarAgora}
           disabled={enviando}
-          className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors disabled:opacity-50"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50 transition-colors disabled:opacity-50"
         >
           {enviando
             ? <Loader2 size={14} className="animate-spin" />
@@ -645,7 +663,7 @@ function SecaoTelegram() {
           {enviando ? 'Enviando...' : 'Enviar aviso agora'}
         </button>
         {feedbackEnvio && (
-          <p className={`text-xs ${feedbackEnvio.ok ? 'text-green-600' : 'text-red-500'}`}>
+          <p className={`rounded-lg px-3 py-2 text-xs ${feedbackEnvio.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
             {feedbackEnvio.mensagem}
           </p>
         )}
@@ -658,31 +676,31 @@ function SecaoTelegram() {
 
 function SecaoPrazo({ prazo, onChange }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+    <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-sm shadow-slate-200/40">
       <SecaoHeader
         icon={Bell}
         titulo="Prazo de alerta"
         descricao="Quantos dias antes do vencimento avisar"
       />
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
         <button
           onClick={() => onChange(prazo - 1)}
           disabled={prazo <= 1}
-          className="w-9 h-9 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-9 h-9 rounded-lg border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <Minus size={15} className="text-slate-600" />
         </button>
 
-        <div className="text-center min-w-[56px]">
-          <p className="text-3xl font-black text-slate-900 leading-none tabular-nums">{prazo}</p>
-          <p className="text-xs text-slate-400 mt-1">{prazo === 1 ? 'dia' : 'dias'}</p>
+        <div className="text-center min-w-[96px]">
+          <p className="text-3xl font-black text-slate-950 leading-none tabular-nums">{prazo}</p>
+          <p className="text-xs font-medium text-slate-500 mt-1">{prazo === 1 ? 'dia antes' : 'dias antes'}</p>
         </div>
 
         <button
           onClick={() => onChange(prazo + 1)}
           disabled={prazo >= 30}
-          className="w-9 h-9 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-9 h-9 rounded-lg border border-slate-200 bg-white flex items-center justify-center hover:bg-slate-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <Plus size={15} className="text-slate-600" />
         </button>
@@ -700,13 +718,13 @@ function LinhaPreviaLancamento({ lancamento, descricao }) {
   const titular = conta?.titulares?.nome ?? 'Sem titular'
 
   return (
-    <div className="py-2 border-t border-slate-100 first:border-t-0 first:pt-0">
+    <div className="py-3 border-t border-slate-100 first:border-t-0 first:pt-0">
       <div className="flex items-start justify-between gap-3">
         <p className="min-w-0 text-sm font-semibold text-slate-900 truncate">{nome}</p>
-        <p className="shrink-0 text-sm font-black text-slate-900">{formatarValor(lancamento.valor)}</p>
+        <p className="shrink-0 text-sm font-black text-slate-950 tabular-nums">{formatarValor(lancamento.valor)}</p>
       </div>
-      <p className="text-xs text-slate-600 mt-1">{descricao}</p>
-      <div className="mt-1.5 space-y-0.5">
+      <p className="text-xs font-medium text-slate-600 mt-1">{descricao}</p>
+      <div className="mt-1.5 grid grid-cols-1 gap-0.5 sm:grid-cols-2 sm:gap-2">
         <p className="text-xs text-slate-500 truncate">Imóvel: {imovel}</p>
         <p className="text-xs text-slate-500 truncate">Titular: {titular}</p>
       </div>
@@ -722,8 +740,8 @@ function montarGrupoPrevia({ titulo, lancamentos, criarDescricao, restante }) {
     usados: visiveis.length,
     elemento: (
       <div className="space-y-2" key={titulo}>
-        <h3 className="text-sm font-black text-slate-900">{titulo}</h3>
-        <div className="rounded-xl bg-white border border-slate-100 p-3">
+        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">{titulo}</h3>
+        <div className="rounded-xl bg-white border border-slate-200 p-3 shadow-sm shadow-slate-200/30">
           {visiveis.map(lancamento => (
             <LinhaPreviaLancamento
               key={lancamento.id}
@@ -758,17 +776,17 @@ function SecaoPreviaAviso({ lancamentos, loading }) {
     }
 
     adicionarGrupo({
-      titulo: '🔴 Vencidas',
+      titulo: 'Vencidas',
       lancamentos: vencidas,
       criarDescricao: l => `Venceu em ${formatarData(l.vencimento)}`,
     })
     adicionarGrupo({
-      titulo: '🟡 Vencem hoje',
+      titulo: 'Vencem hoje',
       lancamentos: hojeLista,
       criarDescricao: () => 'Vence hoje',
     })
     adicionarGrupo({
-      titulo: '🟢 Próximas',
+      titulo: 'Próximas',
       lancamentos: proximas,
       criarDescricao: l => `Vence em ${formatarData(l.vencimento)}`,
     })
@@ -781,11 +799,11 @@ function SecaoPreviaAviso({ lancamentos, loading }) {
   }, [lancamentos, hoje])
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+    <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-sm shadow-slate-200/40">
       <SecaoHeader
         icon={Send}
         titulo="Prévia do aviso"
-        descricao="Aproximação visual da mensagem enviada pelo Telegram"
+        descricao="Contas pendentes incluídas no próximo alerta"
       />
 
       {loading ? (
@@ -793,19 +811,24 @@ function SecaoPreviaAviso({ lancamentos, loading }) {
           <Loader2 size={16} className="animate-spin text-slate-300" />
         </div>
       ) : total === 0 ? (
-        <div className="rounded-xl bg-slate-50 border border-slate-100 p-4 space-y-2">
-          <p className="text-sm font-black text-slate-900">✅ Tudo certo por aqui!</p>
-          <p className="text-sm text-slate-600">Nenhuma conta pendente encontrada para este aviso.</p>
+        <div className="rounded-xl bg-slate-50 border border-dashed border-slate-200 p-4 space-y-2">
+          <p className="text-sm font-semibold text-slate-950">Nenhuma pendência no período</p>
+          <p className="text-sm text-slate-600">Não há contas vencidas ou próximas dentro do prazo configurado.</p>
         </div>
       ) : (
-        <div className="rounded-xl bg-slate-50 border border-slate-100 p-4 space-y-4">
-          <div>
-            <p className="text-sm font-black text-slate-900">
-              🔔 Bom dia! Aqui está seu resumo de contas
-            </p>
-            <p className="text-sm text-slate-600 mt-2">
-              Você tem {total} conta(s) para acompanhar:
-            </p>
+        <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-950">
+                Resumo que será enviado
+              </p>
+              <p className="text-sm text-slate-600 mt-1">
+                {total} conta(s) para acompanhar no Telegram.
+              </p>
+            </div>
+            <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-700 tabular-nums border border-slate-200">
+              {total}
+            </span>
           </div>
 
           {grupos}
@@ -970,124 +993,148 @@ export default function Avisos() {
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
-
-      {/* ── Coluna esquerda: titulares + configurações ── */}
-      <div className="space-y-4">
-        <SecaoTitulares titulares={titulares} setTitulares={setTitulares} />
-        <SecaoTelegram />
-        <SecaoPrazo prazo={prazo} onChange={handlePrazoChange} />
-        <SecaoPreviaAviso lancamentos={lancamentosPrevia} loading={loadingPrevia} />
+    <div className="space-y-5">
+      <div className="flex flex-col gap-2 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Operação
+          </p>
+          <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+            Avisos e cadastros
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">
+            Configure alertas, conexão Telegram e listas auxiliares usadas no controle financeiro.
+          </p>
+        </div>
+        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm shadow-slate-200/40">
+          <Bell size={13} />
+          Alertas ativos
+        </div>
       </div>
 
-      {/* ── Coluna direita: categorias + histórico + contas a fazer ── */}
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 items-start lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
 
-        <SecaoCategorias categorias={categorias} setCategorias={setCategorias} />
-
-        {/* Histórico de alterações */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
-          <SecaoHeader icon={Clock} titulo="Histórico de alterações" />
-
-          {loadingHistorico ? (
-            <div className="flex justify-center py-6">
-              <Loader2 size={16} className="animate-spin text-slate-300" />
-            </div>
-          ) : historico.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-4">
-              Nenhuma alteração registrada.
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {historico.map(l => {
-                const inicial    = (l.alterado_por ?? '?')[0].toUpperCase()
-                const nomeConta  = l.contas?.nome ?? '—'
-                const nomeImovel = l.contas?.centros_custo?.nome
-                const statusTxt  = STATUS_LABEL[l.status] ?? l.status
-
-                return (
-                  <div key={l.id} className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-700 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5">
-                      {inicial}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs text-slate-800 leading-relaxed">
-                        Marcou{' '}
-                        <span className="font-semibold">{nomeConta}</span>
-                        {nomeImovel && (
-                          <span className="text-slate-500"> ({nomeImovel})</span>
-                        )}{' '}
-                        como <span className="font-semibold">{statusTxt}</span>
-                      </p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        {formatarAlteradoEm(l.alterado_em)}
-                      </p>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+        {/* ── Coluna esquerda: titulares + configurações ── */}
+        <div className="space-y-4">
+          <SecaoTitulares titulares={titulares} setTitulares={setTitulares} />
+          <SecaoTelegram />
+          <SecaoPrazo prazo={prazo} onChange={handlePrazoChange} />
+          <SecaoPreviaAviso lancamentos={lancamentosPrevia} loading={loadingPrevia} />
         </div>
 
-        {/* Contas a fazer */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
-          <SecaoHeader
-            icon={FileText}
-            titulo="Contas a fazer"
-            descricao="Contratos pendentes de ativação"
-          />
+        {/* ── Coluna direita: categorias + histórico + contas a fazer ── */}
+        <div className="space-y-4">
 
-          {loadingContas ? (
-            <div className="flex justify-center py-6">
-              <Loader2 size={16} className="animate-spin text-slate-300" />
-            </div>
-          ) : contasAFazer.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-4">
-              Nenhum contrato pendente.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {contasAFazer.map(conta => {
-                const t = titularAtual(conta)
-                return (
-                  <div
-                    key={conta.id}
-                    className="flex items-center justify-between gap-3 bg-slate-50 rounded-xl px-3 py-2.5"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 truncate">
-                        {conta.nome}
-                      </p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        {conta.centros_custo?.nome && (
-                          <p className="text-xs text-slate-500 truncate">
-                            {conta.centros_custo.nome}
-                          </p>
-                        )}
-                        {t && conta.centros_custo?.nome && (
-                          <span className="text-slate-300 text-xs shrink-0">·</span>
-                        )}
-                        {t && (
-                          <p
-                            className="text-xs font-semibold truncate"
-                            style={{ color: t.cor ?? '#64748b' }}
-                          >
-                            {t.nome}
-                          </p>
-                        )}
+          <SecaoCategorias categorias={categorias} setCategorias={setCategorias} />
+
+          {/* Histórico de alterações */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-sm shadow-slate-200/40">
+            <SecaoHeader
+              icon={Clock}
+              titulo="Histórico de alterações"
+              descricao="Últimas marcações feitas nos lançamentos"
+            />
+
+            {loadingHistorico ? (
+              <div className="flex justify-center py-6">
+                <Loader2 size={16} className="animate-spin text-slate-300" />
+              </div>
+            ) : historico.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                Nenhuma alteração registrada.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {historico.map(l => {
+                  const inicial    = (l.alterado_por ?? '?')[0].toUpperCase()
+                  const nomeConta  = l.contas?.nome ?? '—'
+                  const nomeImovel = l.contas?.centros_custo?.nome
+                  const statusTxt  = STATUS_LABEL[l.status] ?? l.status
+
+                  return (
+                    <div key={l.id} className="flex items-start gap-3 rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2.5">
+                      <div className="w-7 h-7 rounded-full bg-white text-slate-700 text-[11px] font-bold flex items-center justify-center shrink-0 mt-0.5 border border-slate-200">
+                        {inicial}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs text-slate-800 leading-relaxed">
+                          Marcou{' '}
+                          <span className="font-semibold">{nomeConta}</span>
+                          {nomeImovel && (
+                            <span className="text-slate-500"> ({nomeImovel})</span>
+                          )}{' '}
+                          como <span className="font-semibold">{statusTxt}</span>
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-0.5 tabular-nums">
+                          {formatarAlteradoEm(l.alterado_em)}
+                        </p>
                       </div>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0">
-                      A fazer
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
 
+          {/* Contas a fazer */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-sm shadow-slate-200/40">
+            <SecaoHeader
+              icon={FileText}
+              titulo="Contas a fazer"
+              descricao="Contratos pendentes de ativação"
+            />
+
+            {loadingContas ? (
+              <div className="flex justify-center py-6">
+                <Loader2 size={16} className="animate-spin text-slate-300" />
+              </div>
+            ) : contasAFazer.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                Nenhum contrato pendente.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {contasAFazer.map(conta => {
+                  const t = titularAtual(conta)
+                  return (
+                    <div
+                      key={conta.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900 truncate">
+                          {conta.nome}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          {conta.centros_custo?.nome && (
+                            <p className="text-xs text-slate-500 truncate">
+                              {conta.centros_custo.nome}
+                            </p>
+                          )}
+                          {t && conta.centros_custo?.nome && (
+                            <span className="text-slate-300 text-xs shrink-0">·</span>
+                          )}
+                          {t && (
+                            <p
+                              className="text-xs font-semibold truncate"
+                              style={{ color: t.cor ?? '#64748b' }}
+                            >
+                              {t.nome}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200 shrink-0">
+                        A fazer
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+        </div>
       </div>
     </div>
   )
