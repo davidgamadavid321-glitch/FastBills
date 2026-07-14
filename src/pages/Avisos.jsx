@@ -101,21 +101,64 @@ function SecaoTitulares({ titulares, setTitulares }) {
   const [cor,         setCor]         = useState(CORES[0])
   const [salvando,    setSalvando]    = useState(false)
   const [erroRemover, setErroRemover] = useState('')
+  const [erroAdicionar, setErroAdicionar] = useState('')
 
   async function handleAdicionar() {
-    if (!nome.trim()) return
+    const nomeAparado = nome.trim()
+
+    if (!nomeAparado) {
+      setErroAdicionar('Informe o nome do titular.')
+      return
+    }
+    if (!workspaceId) {
+      setErroAdicionar('Não foi possível identificar o espaço de trabalho. Recarregue a página e tente novamente.')
+      return
+    }
+
     setSalvando(true)
-    const { data, error } = await supabase
-      .from('titulares')
-      .insert({ nome: nome.trim(), cor, workspace_id: workspaceId })
-      .select()
-      .single()
-    setSalvando(false)
-    if (error) return
-    setTitulares(prev => [...prev, data].sort((a, b) => a.nome.localeCompare(b.nome)))
-    setNome('')
-    setCor(CORES[0])
-    setAdicionando(false)
+    setErroAdicionar('')
+
+    const payload = {
+      nome: nomeAparado,
+      cor: cor || CORES[0],
+      workspace_id: workspaceId,
+    }
+
+    if (import.meta.env.DEV) {
+      console.log('Payload titular:', {
+        nome: payload.nome,
+        cor: payload.cor,
+        workspace_id: payload.workspace_id,
+      })
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('titulares')
+        .insert(payload)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setTitulares(prev => [...prev, data].sort((a, b) => a.nome.localeCompare(b.nome)))
+      setNome('')
+      setCor(CORES[0])
+      setAdicionando(false)
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Erro ao criar titular:', {
+          message: error?.message,
+          code: error?.code,
+          details: error?.details,
+          hint: error?.hint,
+          workspaceId,
+        })
+      }
+      setErroAdicionar('Não foi possível criar o titular. Tente novamente.')
+    } finally {
+      setSalvando(false)
+    }
   }
 
   async function handleRemover(id) {
@@ -200,9 +243,10 @@ function SecaoTitulares({ titulares, setTitulares }) {
               />
             ))}
           </div>
+          {erroAdicionar && <p className="text-xs text-red-500">{erroAdicionar}</p>}
           <div className="flex gap-2">
             <button
-              onClick={() => { setAdicionando(false); setNome('') }}
+              onClick={() => { setAdicionando(false); setNome(''); setErroAdicionar('') }}
               disabled={salvando}
               className="flex-1 py-2 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
             >
@@ -220,7 +264,7 @@ function SecaoTitulares({ titulares, setTitulares }) {
         </div>
       ) : (
         <button
-          onClick={() => { setAdicionando(true); setErroRemover('') }}
+          onClick={() => { setAdicionando(true); setErroRemover(''); setErroAdicionar('') }}
           className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
         >
           <Plus size={14} />
@@ -374,9 +418,31 @@ function SecaoTelegram() {
   const [removendo,     setRemovendo]    = useState(null)
   const [enviando,      setEnviando]     = useState(false)
   const [feedbackEnvio, setFeedbackEnvio] = useState(null)
+  const [gerandoCodigo, setGerandoCodigo] = useState(false)
+  const [codigoConexao, setCodigoConexao] = useState(null)
+  const [erroCodigo,    setErroCodigo]    = useState('')
+
+  const chatsValidos = useMemo(
+    () => chats.filter(chat => chat && (typeof chat.chat_id === 'string' || typeof chat.chat_id === 'number')),
+    [chats],
+  )
+  const telegramConectado = chatsValidos.length > 0
+  const comandoConexao = codigoConexao?.code ? `/start ${codigoConexao.code}` : ''
+  const linkBot = codigoConexao?.code
+    ? `https://t.me/gestaosmart_bot?start=${encodeURIComponent(codigoConexao.code)}`
+    : 'https://t.me/gestaosmart_bot'
+  const expiracaoCodigo = codigoConexao?.expires_at
+    ? new Date(codigoConexao.expires_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    : ''
 
   useEffect(() => {
     function buscarChats() {
+      if (!workspaceId) {
+        setChats([])
+        setLoadingChats(false)
+        return
+      }
+
       supabase
         .from('configuracoes')
         .select('valor')
@@ -393,6 +459,38 @@ function SecaoTelegram() {
     const intervalo = setInterval(buscarChats, 10000)
     return () => clearInterval(intervalo)
   }, [workspaceId])
+
+  async function handleGerarCodigo() {
+    if (!workspaceId) {
+      setErroCodigo('Não foi possível identificar o espaço de trabalho. Recarregue a página e tente novamente.')
+      return
+    }
+
+    setGerandoCodigo(true)
+    setErroCodigo('')
+
+    try {
+      const { data, error } = await supabase.rpc('gerar_codigo_conexao_telegram', {
+        p_workspace_id: workspaceId,
+      })
+
+      if (error) throw error
+
+      const resultado = Array.isArray(data) ? data[0] : data
+      if (!resultado?.code || !resultado?.expires_at) {
+        throw new Error('Resposta invalida ao gerar codigo de conexao.')
+      }
+
+      setCodigoConexao(resultado)
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.error('Erro ao gerar codigo de conexao do Telegram:', error)
+      }
+      setErroCodigo('Não foi possível gerar o código. Tente novamente.')
+    } finally {
+      setGerandoCodigo(false)
+    }
+  }
 
   async function handleRemover(chatId) {
     setRemovendo(chatId)
@@ -431,20 +529,75 @@ function SecaoTelegram() {
         descricao="Avisos de vencimento enviados via bot do Telegram"
       />
 
-      {/* Link de ativação */}
-      <div className="bg-slate-50 rounded-xl p-3 space-y-1">
-        <a
-          href="https://t.me/gestaosmart_bot"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900 hover:text-slate-600 transition-colors"
+      <div className="bg-slate-50 rounded-xl p-3 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-900">
+              {telegramConectado ? 'Telegram conectado' : 'Telegram não conectado'}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {telegramConectado
+                ? 'Este espaço já possui um chat apto a receber avisos.'
+                : 'Gere um código temporário e envie no bot para conectar.'}
+            </p>
+          </div>
+          <span className={`shrink-0 w-2.5 h-2.5 rounded-full ${telegramConectado ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+        </div>
+
+        <button
+          onClick={handleGerarCodigo}
+          disabled={gerandoCodigo || !workspaceId}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
         >
-          <ExternalLink size={14} />
-          Clique aqui para ativar os avisos
-        </a>
-        <p className="text-xs text-slate-500">
-          Abra o link, clique em Iniciar e comece a receber os avisos.
-        </p>
+          {gerandoCodigo ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+          {gerandoCodigo ? 'Gerando...' : 'Gerar código de conexão'}
+        </button>
+
+        {erroCodigo && <p className="text-xs text-red-500">{erroCodigo}</p>}
+
+        {codigoConexao && (
+          <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium text-slate-500">Código</p>
+                <p className="text-lg font-black text-slate-900 tracking-normal font-mono">{codigoConexao.code}</p>
+              </div>
+              {expiracaoCodigo && (
+                <p className="text-xs text-slate-500 shrink-0">Expira às {expiracaoCodigo}</p>
+              )}
+            </div>
+            <div className="rounded-lg bg-slate-100 px-3 py-2">
+              <p className="text-xs text-slate-500">Envie no bot</p>
+              <p className="text-sm font-mono font-semibold text-slate-900 break-all">{comandoConexao}</p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <a
+                href={linkBot}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900 hover:text-slate-600 transition-colors"
+              >
+                <ExternalLink size={14} />
+                Abrir bot com código
+              </a>
+              <p className="text-xs text-slate-500">
+                Se o link não preencher o código, envie manualmente no bot: <span className="font-mono font-semibold text-slate-700">{comandoConexao}</span>
+              </p>
+            </div>
+          </div>
+        )}
+
+        {!codigoConexao && (
+          <a
+            href="https://t.me/gestaosmart_bot"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900 hover:text-slate-600 transition-colors"
+          >
+            <ExternalLink size={14} />
+            Abrir bot no Telegram
+          </a>
+        )}
       </div>
 
       {/* Lista de usuários cadastrados */}
@@ -452,9 +605,9 @@ function SecaoTelegram() {
         <div className="flex justify-center py-2">
           <Loader2 size={16} className="animate-spin text-slate-300" />
         </div>
-      ) : chats.length > 0 ? (
+      ) : chatsValidos.length > 0 ? (
         <div className="space-y-2">
-          {chats.map(c => (
+          {chatsValidos.map(c => (
             <div
               key={c.chat_id}
               className="flex items-center justify-between gap-3 bg-slate-50 rounded-xl px-3 py-2.5"
