@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Plus, MoreVertical, Loader2, Tag, Trash2, Search, Inbox } from 'lucide-react'
+import { Plus, MoreVertical, Loader2, Tag, Trash2, Search, Inbox, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import * as LucideIcons from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -19,37 +19,48 @@ const FILTRO_TODOS = 'todos'
 const FILTRO_GERAL = 'geral'
 const FILTRO_SEM_TITULAR = 'sem_titular'
 const DIAS_PROXIMAS = 7
+const LIMITE_CONTAS_POR_GRUPO = 4
 
 const GRUPOS_VENCIMENTO = [
   {
     chave: 'vencidas',
-    titulo: '🔴 Vencidas',
+    titulo: 'Vencidas',
     descricao: 'Contas com vencimento anterior a hoje',
-    classe: 'border-red-200 bg-red-50/70',
+    classe: 'border-red-100 bg-white',
+    destaque: 'bg-red-500',
+    contador: 'text-red-700 bg-red-50 border-red-100',
   },
   {
     chave: 'hoje',
-    titulo: '🟡 Vencem hoje',
+    titulo: 'Vencem hoje',
     descricao: 'Prioridade do dia',
-    classe: 'border-amber-200 bg-amber-50/70',
+    classe: 'border-amber-100 bg-white',
+    destaque: 'bg-amber-500',
+    contador: 'text-amber-800 bg-amber-50 border-amber-100',
   },
   {
     chave: 'proximas',
-    titulo: '🟢 Próximas',
+    titulo: 'Próximas',
     descricao: `Vencem em até ${DIAS_PROXIMAS} dias`,
-    classe: 'border-green-200 bg-green-50/60',
+    classe: 'border-emerald-100 bg-white',
+    destaque: 'bg-emerald-500',
+    contador: 'text-emerald-700 bg-emerald-50 border-emerald-100',
   },
   {
     chave: 'futuras',
-    titulo: '⚪ Futuras',
+    titulo: 'Futuras',
     descricao: 'Vencimentos depois desse período',
     classe: 'border-slate-200 bg-white',
+    destaque: 'bg-slate-300',
+    contador: 'text-slate-700 bg-slate-50 border-slate-200',
   },
   {
     chave: 'pagas',
-    titulo: '✅ Pagas',
-    descricao: 'Contas já pagas no vencimento atual',
-    classe: 'border-green-200 bg-green-50/60',
+    titulo: 'Pagas',
+    descricao: 'Lançamentos pagos no filtro atual',
+    classe: 'border-slate-200 bg-white',
+    destaque: 'bg-slate-900',
+    contador: 'text-slate-700 bg-slate-50 border-slate-200',
   },
 ]
 
@@ -162,7 +173,7 @@ function MenuBtn({ label, onClick, danger }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-4 py-2 text-sm transition-colors hover:bg-slate-50 ${
+      className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-slate-50 ${
         danger ? 'text-red-600' : 'text-slate-700'
       }`}
     >
@@ -197,6 +208,11 @@ function CardConta({
   }, [menuAberto])
 
   const vencimentoLabel = (() => {
+    if (conta.__lancamentoPago?.vencimentoISO) {
+      const [ano, mes, dia] = conta.__lancamentoPago.vencimentoISO.split('-')
+      return `Pago em ${dia}/${mes}/${ano}`
+    }
+
     if (!conta.dia_vencimento) return null
     if (conta.recorrencia === 'anual' && conta.mes_vencimento) {
       const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
@@ -207,24 +223,24 @@ function CardConta({
   })()
 
   return (
-    <div className={`bg-white rounded-2xl border p-5 flex flex-col gap-3 ${
-      selecionada ? 'border-slate-900 ring-1 ring-slate-900' : 'border-slate-200'
+    <div className={`bg-white rounded-xl border p-3 sm:p-5 flex flex-col gap-2.5 sm:gap-4 shadow-sm shadow-slate-200/60 transition-colors min-w-0 ${
+      selecionada ? 'border-slate-900 ring-1 ring-slate-900' : 'border-slate-200 hover:border-slate-300'
     }`}>
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-start gap-3 min-w-0">
+      <div className="flex items-start justify-between gap-1.5 sm:gap-3">
+        <div className="flex items-start gap-2 sm:gap-3 min-w-0">
           {modoSelecao && (
             <input
               type="checkbox"
               checked={selecionada}
               onChange={() => onSelecionar(conta.id)}
               aria-label={`Selecionar ${conta.nome}`}
-              className="mt-2.5 h-4 w-4 shrink-0 accent-slate-900"
+              className="mt-1 h-4 w-4 shrink-0 accent-slate-900 sm:mt-2.5"
             />
           )}
           <div
-            className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+            className="hidden sm:flex w-10 h-10 rounded-xl items-center justify-center shrink-0 ring-1 ring-black/5"
             style={{ backgroundColor: cor ? `${cor}22` : '#f1f5f9' }}
           >
             <IconeLucide
@@ -234,17 +250,22 @@ function CardConta({
             />
           </div>
           <div className="min-w-0">
-            <p className="font-bold text-slate-900 leading-tight truncate">{conta.nome}</p>
-            <p className="text-xs font-semibold mt-0.5 truncate" style={{ color: cor ?? '#64748b' }}>
-              {titular?.nome ?? 'Sem titular'}
-            </p>
+            <p className="text-xs sm:text-sm font-semibold text-slate-950 leading-tight line-clamp-2 break-words sm:truncate">{conta.nome}</p>
+            <div className="mt-1 hidden sm:flex flex-wrap items-center gap-1.5">
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                {RECORRENCIA_LABEL[conta.recorrencia] ?? '—'}
+              </span>
+              <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold" style={{ color: cor ?? '#64748b' }}>
+                {titular?.nome ?? 'Sem titular'}
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-start gap-1 sm:items-center sm:gap-2 shrink-0">
           <span
-            className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${
-              isAtivo ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-800'
+            className={`hidden sm:inline-flex text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
+              isAtivo ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-800 border-amber-100'
             }`}
           >
             {isAtivo ? 'Ativo' : 'A fazer'}
@@ -253,12 +274,12 @@ function CardConta({
             <div ref={menuRef} className="relative">
               <button
                 onClick={() => setMenuAberto(m => !m)}
-                className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
+                className="p-1 hover:bg-slate-100 rounded-lg transition-colors sm:p-1.5"
               >
-                <MoreVertical size={16} className="text-slate-400" />
+                <MoreVertical size={15} className="text-slate-400 sm:w-4 sm:h-4" />
               </button>
               {menuAberto && (
-                <div className="absolute right-0 top-8 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 w-44 z-20">
+                <div className="absolute right-0 top-9 bg-white border border-slate-200 rounded-xl shadow-xl shadow-slate-900/10 py-1.5 w-44 z-20">
                   <MenuBtn label="Editar" onClick={() => { onEditar(); setMenuAberto(false) }} />
                   <MenuBtn label="Ver lançamentos" onClick={() => { onVerLancamentos(); setMenuAberto(false) }} />
                   <div className="h-px bg-slate-100 my-1" />
@@ -271,10 +292,28 @@ function CardConta({
       </div>
 
       {/* Detalhes */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 pt-3 border-t border-slate-100">
-        <div>
-          <p className="text-[11px] text-slate-400 font-medium">Imóvel</p>
-          <div className="mt-1 flex items-center gap-1.5 min-w-0">
+      <div className="sm:hidden space-y-1.5 pt-2 border-t border-slate-100">
+        {conta.valor_referencia != null && (
+          <p className="text-sm font-bold text-slate-950 tabular-nums truncate">{formatarValor(conta.valor_referencia)}</p>
+        )}
+        <div className="flex items-center justify-between gap-2">
+          {vencimentoLabel && (
+            <p className="min-w-0 truncate text-[11px] font-semibold text-slate-600 tabular-nums">{vencimentoLabel}</p>
+          )}
+          <span
+            className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+              isAtivo ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-800 border-amber-100'
+            }`}
+          >
+            {isAtivo ? 'Ativo' : 'A fazer'}
+          </span>
+        </div>
+      </div>
+
+      <div className="hidden sm:grid grid-cols-2 gap-x-4 gap-y-3 pt-4 border-t border-slate-100">
+        <div className="min-w-0 col-span-2 sm:col-span-1">
+          <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Imóvel</p>
+          <div className="mt-1.5 flex items-center gap-1.5 min-w-0">
             <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold leading-none ${centro.badgeClass}`}>
               {centro.badge}
             </span>
@@ -284,19 +323,19 @@ function CardConta({
           </div>
         </div>
         <div>
-          <p className="text-[11px] text-slate-400 font-medium">Recorrência</p>
-          <p className="text-xs text-slate-700 font-semibold mt-0.5">{RECORRENCIA_LABEL[conta.recorrencia] ?? '—'}</p>
+          <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Categoria</p>
+          <p className="text-xs text-slate-700 font-semibold mt-1.5 truncate">{conta.categorias?.nome ?? 'Sem categoria'}</p>
         </div>
         {vencimentoLabel && (
           <div>
-            <p className="text-[11px] text-slate-400 font-medium">Vencimento</p>
-            <p className="text-xs text-slate-700 font-semibold mt-0.5">{vencimentoLabel}</p>
+            <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Vencimento</p>
+            <p className="text-xs text-slate-700 font-semibold mt-1.5 tabular-nums">{vencimentoLabel}</p>
           </div>
         )}
         {conta.valor_referencia != null && (
-          <div>
-            <p className="text-[11px] text-slate-400 font-medium">Valor de referência</p>
-            <p className="text-xs text-slate-900 font-bold mt-0.5">{formatarValor(conta.valor_referencia)}</p>
+          <div className="text-left sm:text-right">
+            <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wide">Valor referência</p>
+            <p className="text-sm text-slate-950 font-bold mt-1 tabular-nums">{formatarValor(conta.valor_referencia)}</p>
           </div>
         )}
       </div>
@@ -307,6 +346,8 @@ function CardConta({
 function SecaoGrupoContas({
   grupo,
   contas,
+  expandido,
+  onToggleExpandido,
   modoSelecao,
   contasSelecionadas,
   onSelecionar,
@@ -316,22 +357,29 @@ function SecaoGrupoContas({
 }) {
   if (contas.length === 0) return null
 
+  const deveLimitar = contas.length > LIMITE_CONTAS_POR_GRUPO
+  const contasVisiveis = expandido ? contas : contas.slice(0, LIMITE_CONTAS_POR_GRUPO)
+  const quantidadeRestante = contas.length - LIMITE_CONTAS_POR_GRUPO
+
   return (
-    <section className={`rounded-2xl border p-3 sm:p-4 space-y-3 ${grupo.classe}`}>
+    <section className={`rounded-2xl border p-3 sm:p-4 space-y-3 shadow-sm shadow-slate-200/60 ${grupo.classe}`}>
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-black text-slate-900">{grupo.titulo}</h2>
-          <p className="text-xs text-slate-500 mt-0.5">{grupo.descricao}</p>
+        <div className="min-w-0 flex items-start gap-3">
+          <span className={`mt-1 h-8 w-1 rounded-full ${grupo.destaque}`} />
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-slate-950">{grupo.titulo}</h2>
+            <p className="text-xs text-slate-500 mt-0.5">{grupo.descricao}</p>
+          </div>
         </div>
-        <span className="shrink-0 text-[11px] font-bold text-slate-600 bg-white/80 border border-black/5 rounded-full px-2 py-1">
+        <span className={`shrink-0 text-[11px] font-bold border rounded-full px-2.5 py-1 tabular-nums ${grupo.contador}`}>
           {contas.length}
         </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {contas.map(conta => (
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-1 xl:grid-cols-2 sm:gap-4">
+        {contasVisiveis.map(conta => (
           <CardConta
-            key={conta.id}
+            key={conta.__itemKey ?? conta.id}
             conta={conta}
             modoSelecao={modoSelecao}
             selecionada={contasSelecionadas.has(conta.id)}
@@ -342,6 +390,26 @@ function SecaoGrupoContas({
           />
         ))}
       </div>
+
+      {deveLimitar && (
+        <button
+          type="button"
+          onClick={onToggleExpandido}
+          className="mx-auto flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm shadow-slate-200/50 transition-colors hover:bg-slate-50 hover:text-slate-900"
+        >
+          {expandido ? (
+            <>
+              Mostrar menos
+              <ChevronUp size={14} />
+            </>
+          ) : (
+            <>
+              Mostrar mais {quantidadeRestante} {quantidadeRestante === 1 ? 'conta' : 'contas'}
+              <ChevronDown size={14} />
+            </>
+          )}
+        </button>
+      )}
     </section>
   )
 }
@@ -367,6 +435,8 @@ export default function Contas() {
   const [filtroCategoria,   setFiltroCategoria]   = useState(FILTRO_TODOS)
   const [filtroRecorrencia, setFiltroRecorrencia] = useState(FILTRO_TODOS)
   const [filtroStatus,      setFiltroStatus]      = useState(FILTRO_TODOS)
+  const [filtrosAvancadosAbertos, setFiltrosAvancadosAbertos] = useState(false)
+  const [gruposExpandidos, setGruposExpandidos] = useState({})
 
   // Modais / ações
   const [modalCadastro,  setModalCadastro]  = useState(false)
@@ -481,6 +551,10 @@ export default function Contas() {
     return map
   }, [lancamentos])
 
+  const contasFiltradasPorId = useMemo(() => {
+    return new Map(contasFiltradas.map(conta => [conta.id, conta]))
+  }, [contasFiltradas])
+
   const contasAgrupadas = useMemo(() => {
     const inicial = {
       vencidas: [],
@@ -492,15 +566,43 @@ export default function Contas() {
 
     contasFiltradas.forEach(conta => {
       const { grupo } = grupoVencimentoConta(conta, hojeISO, lancamentosPorContaVencimento, lancamentosPorConta)
+      if (grupo === 'pagas') return
       inicial[grupo].push(conta)
     })
 
+    lancamentos.forEach(lancamento => {
+      if (lancamento.status !== 'pago') return
+
+      const conta = contasFiltradasPorId.get(lancamento.conta_id)
+      if (!conta) return
+
+      const vencimentoISO = normalizarDataISO(lancamento.vencimento)
+      if (!vencimentoISO) return
+
+      inicial.pagas.push({
+        ...conta,
+        __itemKey: `${conta.id}|${vencimentoISO}|${lancamento.id}`,
+        __lancamentoPago: {
+          ...lancamento,
+          vencimentoISO,
+        },
+      })
+    })
+
     Object.keys(inicial).forEach(grupo => {
+      if (grupo === 'pagas') {
+        inicial[grupo].sort((a, b) => (
+          (b.__lancamentoPago?.vencimentoISO ?? '').localeCompare(a.__lancamentoPago?.vencimentoISO ?? '')
+          || (a.nome ?? '').localeCompare(b.nome ?? '')
+        ))
+        return
+      }
+
       inicial[grupo].sort((a, b) => ordenarPorVencimento(a, b, hojeISO, lancamentosPorContaVencimento, lancamentosPorConta))
     })
 
     return inicial
-  }, [contasFiltradas, hojeISO, lancamentosPorContaVencimento, lancamentosPorConta])
+  }, [contasFiltradas, contasFiltradasPorId, hojeISO, lancamentos, lancamentosPorContaVencimento, lancamentosPorConta])
 
   const filtrosAtivos = (
     busca.trim() !== ''
@@ -511,7 +613,23 @@ export default function Contas() {
     || filtroRecorrencia !== FILTRO_TODOS
   )
 
+  const quantidadeFiltrosAtivos = [
+    busca.trim() !== '',
+    filtroCentro !== FILTRO_TODOS,
+    filtroTitular !== FILTRO_TODOS,
+    filtroCategoria !== FILTRO_TODOS,
+    filtroStatus !== FILTRO_TODOS,
+    filtroRecorrencia !== FILTRO_TODOS,
+  ].filter(Boolean).length
+
   // ── Handlers ──
+
+  function toggleGrupo(chaveGrupo) {
+    setGruposExpandidos(prev => ({
+      ...prev,
+      [chaveGrupo]: !prev[chaveGrupo],
+    }))
+  }
 
   function limparFiltros() {
     setBusca('')
@@ -657,71 +775,106 @@ export default function Contas() {
   }
 
   const selectClass =
-    'w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition'
+    'w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition shadow-sm shadow-slate-200/40'
   const inputClass =
-    'w-full border border-slate-300 rounded-xl py-2.5 pl-9 pr-4 text-sm text-slate-700 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 transition'
+    'w-full border border-slate-200 rounded-xl py-2.5 pl-9 pr-4 text-sm text-slate-700 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition shadow-sm shadow-slate-200/40'
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          {contasFiltradas.length}{' '}
-          {contasFiltradas.length === 1 ? 'conta cadastrada' : 'contas cadastradas'}
-        </p>
-        <button
-          onClick={() => setModalCadastro(true)}
-          className="flex items-center gap-1.5 bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors"
-        >
-          <Plus size={14} />
-          Adicionar
-        </button>
-      </div>
-
-      {/* Filtros */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div>
-            <p className="text-sm font-bold text-slate-900">Filtros</p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {contasFiltradas.length} {contasFiltradas.length === 1 ? 'conta encontrada' : 'contas encontradas'}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Contas</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Carteira de contas</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Controle vencimentos, titulares e contratos ativos em um só lugar.
+          </p>
+        </div>
+        <div className="flex items-center justify-between gap-3 sm:justify-end">
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-right shadow-sm shadow-slate-200/60">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Exibindo</p>
+            <p className="text-sm font-bold text-slate-950 tabular-nums">
+              {contasFiltradas.length}{' '}
+              <span className="font-semibold text-slate-500">
+                {contasFiltradas.length === 1 ? 'conta' : 'contas'}
+              </span>
             </p>
           </div>
           <button
-            onClick={limparFiltros}
-            disabled={!filtrosAtivos}
-            className="self-start sm:self-auto px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+            onClick={() => setModalCadastro(true)}
+            className="flex items-center gap-1.5 bg-slate-900 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors shadow-sm shadow-slate-300"
           >
-            Limpar filtros
+            <Plus size={14} />
+            Nova conta
           </button>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <div className="space-y-1 sm:col-span-2 lg:col-span-3">
-            <label className="text-xs font-semibold text-slate-500">Buscar conta</label>
-            <div className="relative">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="search"
-                value={busca}
-                onChange={e => setBusca(e.target.value)}
-                placeholder="Buscar por nome"
-                className={inputClass}
-              />
+      {/* Filtros */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm shadow-slate-200/60">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-950">Filtros e busca</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Encontre contas por nome e refine a carteira quando precisar.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setFiltrosAvancadosAbertos(aberto => !aberto)}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                quantidadeFiltrosAtivos > 0
+                  ? 'border-slate-300 bg-slate-900 text-white hover:bg-slate-800'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <SlidersHorizontal size={13} />
+              Filtros avançados
+              {quantidadeFiltrosAtivos > 0 && (
+                <span className="rounded-full bg-white/15 px-1.5 py-0.5 text-[10px] tabular-nums">
+                  {quantidadeFiltrosAtivos} {quantidadeFiltrosAtivos === 1 ? 'ativo' : 'ativos'}
+                </span>
+              )}
+              {filtrosAvancadosAbertos ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+            <button
+              onClick={limparFiltros}
+              disabled={!filtrosAtivos}
+              className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+            >
+              Limpar filtros
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-500">Buscar conta</label>
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+              placeholder="Buscar por nome"
+              className={inputClass}
+            />
+          </div>
+        </div>
+
+        {filtrosAvancadosAbertos && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 border-t border-slate-100 pt-4">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-500">Imóvel</label>
+              <select value={filtroCentro} onChange={e => setFiltroCentro(e.target.value)} className={selectClass}>
+                <option value={FILTRO_TODOS}>Todos</option>
+                <option value={FILTRO_GERAL}>Geral / Sem imóvel</option>
+                {centrosCusto.map(c => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
             </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-500">Imóvel</label>
-            <select value={filtroCentro} onChange={e => setFiltroCentro(e.target.value)} className={selectClass}>
-              <option value={FILTRO_TODOS}>Todos</option>
-              <option value={FILTRO_GERAL}>Geral / Sem imóvel</option>
-              {centrosCusto.map(c => (
-                <option key={c.id} value={c.id}>{c.nome}</option>
-              ))}
-            </select>
-          </div>
 
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-500">Titular</label>
@@ -762,13 +915,14 @@ export default function Contas() {
               <option value="anual">Anual</option>
             </select>
           </div>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Gerenciamento em lote */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm shadow-slate-200/60">
         <div>
-          <p className="text-sm font-bold text-slate-900">Gerenciar contas</p>
+          <p className="text-sm font-semibold text-slate-950">Operações em lote</p>
           <p className="text-xs text-slate-500 mt-0.5">
             {modoSelecao
               ? `${contasSelecionadas.size} ${contasSelecionadas.size === 1 ? 'conta selecionada' : 'contas selecionadas'}`
@@ -829,12 +983,12 @@ export default function Contas() {
       {/* Lista de cards agrupada por vencimento */}
       {contasFiltradas.length === 0 ? (
         contas.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 py-16 px-4 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-white py-16 px-4 text-center shadow-sm shadow-slate-200/60">
+            <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center">
               <Inbox size={20} className="text-slate-400" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-bold text-slate-900">Você ainda não cadastrou nenhuma conta.</p>
+              <p className="text-sm font-semibold text-slate-950">Nenhuma conta cadastrada.</p>
               <p className="text-xs text-slate-500 max-w-xs">
                 Crie sua primeira conta para acompanhar vencimentos, pagamentos e comprovantes.
               </p>
@@ -848,12 +1002,12 @@ export default function Contas() {
             </button>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 py-16 px-4 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-white py-16 px-4 text-center shadow-sm shadow-slate-200/60">
+            <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center">
               <Search size={20} className="text-slate-400" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-bold text-slate-900">Nenhuma conta encontrada com os filtros atuais.</p>
+              <p className="text-sm font-semibold text-slate-950">Nenhuma conta encontrada.</p>
               <p className="text-xs text-slate-500 max-w-xs">
                 Tente ajustar a busca ou limpar os filtros para ver mais contas.
               </p>
@@ -873,6 +1027,8 @@ export default function Contas() {
               key={grupo.chave}
               grupo={grupo}
               contas={contasAgrupadas[grupo.chave]}
+              expandido={Boolean(gruposExpandidos[grupo.chave])}
+              onToggleExpandido={() => toggleGrupo(grupo.chave)}
               modoSelecao={modoSelecao}
               contasSelecionadas={contasSelecionadas}
               onSelecionar={toggleSelecionarConta}
