@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Plus, MoreVertical, Loader2 } from 'lucide-react'
+import { Plus, MoreVertical, Loader2, Building2, Users, ReceiptText } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
@@ -24,7 +24,7 @@ function MenuBtn({ label, onClick, danger, disabled }) {
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`w-full text-left px-4 py-2 text-sm transition-colors hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed ${
+      className={`w-full text-left px-3 py-2 text-sm font-medium transition-colors hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed ${
         danger ? 'text-red-600' : 'text-slate-700'
       }`}
     >
@@ -48,31 +48,38 @@ function CardCentro({ centro, titulares, totalMensal, contasCount, onEditar, onA
   }, [menuAberto])
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col gap-4">
+    <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex flex-col gap-4 shadow-sm shadow-slate-200/40">
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="font-bold text-slate-900 leading-tight truncate">{centro.nome}</p>
-          <p className="text-xs text-slate-400 mt-0.5">{TIPO_LABEL[centro.tipo] ?? '—'}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex items-start gap-3">
+          <div className="hidden sm:flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50">
+            <Building2 size={16} className="text-slate-600" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-slate-950 leading-tight truncate">{centro.nome}</p>
+            <p className="text-xs text-slate-500 mt-1">{TIPO_LABEL[centro.tipo] ?? 'Tipo não informado'}</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <span
-            className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${
-              isAtivo ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-800'
+            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ring-1 ${
+              isAtivo
+                ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                : 'bg-amber-50 text-amber-700 ring-amber-200'
             }`}
           >
-            {isAtivo ? 'Ativo' : 'Em configuração'}
+            {isAtivo ? 'Ativo' : 'Configuração'}
           </span>
           <div ref={menuRef} className="relative">
             <button
               onClick={() => setMenuAberto(m => !m)}
-              className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
+              className="h-8 w-8 flex items-center justify-center hover:bg-slate-100 rounded-lg transition-colors"
+              aria-label={`Abrir ações de ${centro.nome}`}
             >
               <MoreVertical size={16} className="text-slate-400" />
             </button>
             {menuAberto && (
-              <div className="absolute right-0 top-8 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 w-44 z-20">
+              <div className="absolute right-0 top-9 bg-white border border-slate-200 rounded-xl shadow-lg shadow-slate-200/60 py-1.5 w-44 z-20">
                 <MenuBtn label="Editar" onClick={() => { onEditar(); setMenuAberto(false) }} />
                 <MenuBtn label="Ver contas" onClick={() => { onVerContas(); setMenuAberto(false) }} />
                 <MenuBtn label="Trocar titular" onClick={() => { onTrocarTitular(); setMenuAberto(false) }} />
@@ -89,36 +96,50 @@ function CardCentro({ centro, titulares, totalMensal, contasCount, onEditar, onA
         </div>
       </div>
 
-      {/* Avatares dos titulares */}
-      {titulares.length > 0 && (
-        <div className="flex items-center">
-          {titulares.slice(0, 6).map((t, i) => (
-            <div
-              key={t.id}
-              title={t.nome}
-              className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-white text-[11px] font-bold shrink-0 ${i > 0 ? '-ml-2' : ''}`}
-              style={{ backgroundColor: t.cor }}
-            >
-              {t.nome[0]?.toUpperCase()}
-            </div>
-          ))}
-          {titulares.length > 6 && (
-            <div className="w-7 h-7 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-slate-600 text-[11px] font-bold -ml-2">
-              +{titulares.length - 6}
-            </div>
-          )}
+      <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-3 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide">Total mensal</p>
+            <p className="text-base font-black text-slate-950 mt-0.5 tabular-nums">{formatarValor(totalMensal)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide">Contas</p>
+            <p className="text-base font-black text-slate-950 mt-0.5 tabular-nums">{contasCount}</p>
+          </div>
         </div>
-      )}
 
-      {/* Stats */}
-      <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-        <div>
-          <p className="text-[11px] text-slate-400 font-medium">Total mensal</p>
-          <p className="text-sm font-bold text-slate-900 mt-0.5">{formatarValor(totalMensal)}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-[11px] text-slate-400 font-medium">Contas</p>
-          <p className="text-sm font-bold text-slate-900 mt-0.5">{contasCount}</p>
+        <div className="flex items-center justify-between gap-3 border-t border-slate-200/70 pt-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <Users size={14} className="text-slate-400 shrink-0" />
+            {titulares.length > 0 ? (
+              <div className="flex items-center min-w-0">
+                {titulares.slice(0, 6).map((t, i) => (
+                  <div
+                    key={t.id}
+                    title={t.nome}
+                    className={`w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-white text-[11px] font-bold shrink-0 ${i > 0 ? '-ml-2' : ''}`}
+                    style={{ backgroundColor: t.cor }}
+                  >
+                    {t.nome[0]?.toUpperCase()}
+                  </div>
+                ))}
+                {titulares.length > 6 && (
+                  <div className="w-7 h-7 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-slate-600 text-[11px] font-bold -ml-2">
+                    +{titulares.length - 6}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 truncate">Nenhum titular vinculado</p>
+            )}
+          </div>
+          <button
+            onClick={onVerContas}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors shrink-0"
+          >
+            <ReceiptText size={13} />
+            Contas
+          </button>
         </div>
       </div>
     </div>
@@ -276,11 +297,19 @@ export default function Imoveis() {
   // ── Render ──
 
   if (erroWorkspace) {
-    return <p className="text-sm text-red-500">{erroWorkspace}</p>
+    return (
+      <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+        {erroWorkspace}
+      </div>
+    )
   }
 
   if (erroCarregamento) {
-    return <p className="text-sm text-red-500">{erroCarregamento}</p>
+    return (
+      <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+        {erroCarregamento}
+      </div>
+    )
   }
 
   if (loadingWorkspace || loading) {
@@ -292,20 +321,36 @@ export default function Imoveis() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
 
-      {/* Header da lista */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          {centros.length} {centros.length === 1 ? 'imóvel' : 'imóveis'}
-        </p>
+      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Cadastros
+          </p>
+          <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+            Imóveis e centros de custo
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">
+            Organize os imóveis, unidades e centros usados para agrupar contas e lançamentos.
+          </p>
+        </div>
         <button
           onClick={() => setModalCadastro(true)}
-          className="flex items-center gap-1.5 bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition-colors sm:w-auto"
         >
           <Plus size={14} />
-          Adicionar
+          Novo imóvel
         </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm shadow-slate-200/40">
+          {centros.length} {centros.length === 1 ? 'imóvel' : 'imóveis'}
+        </span>
+        <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm shadow-slate-200/40">
+          {centros.filter(c => c.status === 'ativo').length} ativos
+        </span>
       </div>
 
       {erroStatus && (
@@ -314,32 +359,49 @@ export default function Imoveis() {
         </div>
       )}
 
-      {/* Grade */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {centros.map(centro => (
-          <CardCentro
-            key={centro.id}
-            centro={centro}
-            titulares={titularesPorCentro[centro.id] ?? []}
-            totalMensal={totalMensalPorCentro[centro.id] ?? 0}
-            contasCount={contasCountPorCentro[centro.id] ?? 0}
-            onEditar={() => setModalEdicao(centro)}
-            onAlterarStatus={() => handleAlterarStatus(centro)}
-            onTrocarTitular={() => setModalTrocarTitular(centro)}
-            onVerContas={() => navigate('/contas', { state: { centroId: centro.id } })}
-            alterandoStatus={alterandoStatusId === centro.id}
-          />
-        ))}
+      {centros.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center shadow-sm shadow-slate-200/40">
+          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-50">
+            <Building2 size={18} className="text-slate-500" />
+          </div>
+          <p className="mt-3 text-sm font-semibold text-slate-950">Nenhum imóvel cadastrado</p>
+          <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-slate-600">
+            Cadastre o primeiro centro de custo para começar a organizar contas e responsáveis.
+          </p>
+          <button
+            onClick={() => setModalCadastro(true)}
+            className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
+          >
+            <Plus size={14} />
+            Cadastrar primeiro imóvel
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {centros.map(centro => (
+            <CardCentro
+              key={centro.id}
+              centro={centro}
+              titulares={titularesPorCentro[centro.id] ?? []}
+              totalMensal={totalMensalPorCentro[centro.id] ?? 0}
+              contasCount={contasCountPorCentro[centro.id] ?? 0}
+              onEditar={() => setModalEdicao(centro)}
+              onAlterarStatus={() => handleAlterarStatus(centro)}
+              onTrocarTitular={() => setModalTrocarTitular(centro)}
+              onVerContas={() => navigate('/contas', { state: { centroId: centro.id } })}
+              alterandoStatus={alterandoStatusId === centro.id}
+            />
+          ))}
 
-        {/* Card dashed — novo centro */}
-        <button
-          onClick={() => setModalCadastro(true)}
-          className="rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-3 p-8 text-slate-400 hover:border-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors min-h-[160px]"
-        >
-          <Plus size={22} />
-          <span className="text-sm font-medium">Novo imóvel</span>
-        </button>
-      </div>
+          <button
+            onClick={() => setModalCadastro(true)}
+            className="rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center gap-3 p-8 text-slate-400 hover:border-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors min-h-[190px]"
+          >
+            <Plus size={20} />
+            <span className="text-sm font-semibold">Novo imóvel</span>
+          </button>
+        </div>
+      )}
 
       {/* Modais */}
       {modalCadastro && (
