@@ -42,26 +42,26 @@ function DetalheMes({ lancamentos }) {
   )
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
       {/* Por imóvel */}
-      <div>
-        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2.5">
+      <div className="rounded-xl border border-slate-200 bg-white p-3">
+        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-3">
           Por imóvel
         </p>
         <div className="space-y-2">
           {porCentro.map(([nome, total]) => (
             <div key={nome} className="flex items-center justify-between gap-3">
               <p className="text-xs text-slate-700 truncate">{nome}</p>
-              <p className="text-xs font-bold text-slate-900 shrink-0">{formatarValor(total)}</p>
+              <p className="text-xs font-bold text-slate-900 shrink-0 tabular-nums">{formatarValor(total)}</p>
             </div>
           ))}
         </div>
       </div>
 
       {/* Por titular */}
-      <div>
-        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2.5">
+      <div className="rounded-xl border border-slate-200 bg-white p-3">
+        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-3">
           Por titular
         </p>
         <div className="space-y-2">
@@ -81,22 +81,22 @@ function DetalheMes({ lancamentos }) {
                   {nome}
                 </p>
               </div>
-              <p className="text-xs font-bold text-slate-900 shrink-0">{formatarValor(total)}</p>
+              <p className="text-xs font-bold text-slate-900 shrink-0 tabular-nums">{formatarValor(total)}</p>
             </div>
           ))}
         </div>
       </div>
 
       {/* Contas pagas */}
-      <div>
-        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2.5">
+      <div className="rounded-xl border border-slate-200 bg-white p-3">
+        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-3">
           Contas pagas
         </p>
         <div className="space-y-2">
           {contasOrdenadas.map(l => (
             <div key={l.id} className="flex items-center justify-between gap-3">
               <p className="text-xs text-slate-700 truncate">{l.contas?.nome ?? '—'}</p>
-              <p className="text-xs font-bold text-slate-900 shrink-0">{formatarValor(l.valor)}</p>
+              <p className="text-xs font-bold text-slate-900 shrink-0 tabular-nums">{formatarValor(l.valor)}</p>
             </div>
           ))}
         </div>
@@ -108,7 +108,7 @@ function DetalheMes({ lancamentos }) {
 
 // ── Página principal ─────────────────────────────────────────
 
-const COL = 'grid grid-cols-[1fr_140px_120px]'
+const COL = 'grid grid-cols-[minmax(0,1fr)_112px_76px] sm:grid-cols-[minmax(0,1fr)_150px_120px]'
 
 export default function Resumo() {
   const { workspaceId, loadingWorkspace, erroWorkspace } = useWorkspace()
@@ -207,26 +207,35 @@ export default function Resumo() {
     <div className="space-y-5">
 
       {/* Header com seletor de ano */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          {loading
-            ? 'Carregando...'
-            : `${lancamentos.length} pagamento${lancamentos.length !== 1 ? 's' : ''} em ${ano}`}
-        </p>
-        <div className="relative">
-          <select
-            value={ano}
-            onChange={e => setAno(parseInt(e.target.value, 10))}
-            className="appearance-none cursor-pointer border border-slate-200 rounded-xl pl-3 pr-8 py-1.5 text-sm font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition"
-          >
-            {anos.map(a => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </select>
-          <ChevronDown
-            size={13}
-            className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-          />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Resumo financeiro</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Pagamentos do ano</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {loading
+              ? 'Carregando pagamentos...'
+              : `${lancamentos.length} pagamento${lancamentos.length !== 1 ? 's' : ''} registrado${lancamentos.length !== 1 ? 's' : ''} em ${ano}.`}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-right shadow-sm shadow-slate-200/60">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Ano</p>
+            <div className="relative">
+              <select
+                value={ano}
+                onChange={e => setAno(parseInt(e.target.value, 10))}
+                className="appearance-none cursor-pointer bg-transparent pl-0 pr-5 text-sm font-bold text-slate-950 tabular-nums focus:outline-none"
+              >
+                {anos.map(a => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+              <ChevronDown
+                size={13}
+                className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -242,64 +251,77 @@ export default function Resumo() {
         <>
 
           {/* ── Cards de resumo ── */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
 
-            <div className="bg-white rounded-2xl border border-slate-200 p-4">
-              <p className="text-xs text-slate-500 font-medium mb-2">Total pago em {ano}</p>
-              <p className="text-xl font-black text-slate-900 leading-none">
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm shadow-slate-200/60">
+              <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wide mb-2">Total pago</p>
+              <p className="text-xl font-black text-slate-950 leading-none tabular-nums">
                 {formatarValor(totalAnual)}
               </p>
+              <p className="mt-2 text-xs text-slate-500">{ano}</p>
             </div>
 
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
-              <p className="text-xs text-red-600 font-medium mb-1.5">Mês mais caro</p>
+            <div className="bg-white border border-red-100 rounded-2xl p-4 shadow-sm shadow-slate-200/60">
+              <p className="text-[11px] text-red-500 font-semibold uppercase tracking-wide mb-1.5">Mês mais caro</p>
               {idxMaisCaro >= 0 ? (
                 <>
-                  <p className="text-[11px] font-semibold text-red-600 mb-0.5">
+                  <p className="text-xs font-semibold text-slate-500 mb-1">
                     {NOMES_MESES[idxMaisCaro]}
                   </p>
-                  <p className="text-base font-black text-red-800 leading-none">
+                  <p className="text-base font-black text-slate-950 leading-none tabular-nums">
                     {formatarValor(porMes[idxMaisCaro].total)}
                   </p>
                 </>
               ) : (
-                <p className="text-base font-bold text-red-300">—</p>
+                <p className="text-base font-bold text-slate-300">—</p>
               )}
             </div>
 
-            <div className="bg-green-50 border border-green-200 rounded-2xl p-4">
-              <p className="text-xs text-green-600 font-medium mb-1.5">Mês mais barato</p>
+            <div className="bg-white border border-emerald-100 rounded-2xl p-4 shadow-sm shadow-slate-200/60">
+              <p className="text-[11px] text-emerald-600 font-semibold uppercase tracking-wide mb-1.5">Mês mais baixo</p>
               {idxMaisBarato >= 0 ? (
                 <>
-                  <p className="text-[11px] font-semibold text-green-600 mb-0.5">
+                  <p className="text-xs font-semibold text-slate-500 mb-1">
                     {NOMES_MESES[idxMaisBarato]}
                   </p>
-                  <p className="text-base font-black text-green-800 leading-none">
+                  <p className="text-base font-black text-slate-950 leading-none tabular-nums">
                     {formatarValor(porMes[idxMaisBarato].total)}
                   </p>
                 </>
               ) : (
-                <p className="text-base font-bold text-green-300">—</p>
+                <p className="text-base font-bold text-slate-300">—</p>
               )}
             </div>
 
-            <div className="bg-white rounded-2xl border border-slate-200 p-4">
-              <p className="text-xs text-slate-500 font-medium mb-2">Média mensal</p>
-              <p className="text-xl font-black text-slate-900 leading-none">
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm shadow-slate-200/60">
+              <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wide mb-2">Média mensal</p>
+              <p className="text-xl font-black text-slate-950 leading-none tabular-nums">
                 {formatarValor(mediaMensal)}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                {mesesComDados.length} {mesesComDados.length === 1 ? 'mês com pagamento' : 'meses com pagamento'}
               </p>
             </div>
 
           </div>
 
+          {lancamentos.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center shadow-sm shadow-slate-200/60">
+              <p className="text-sm font-semibold text-slate-950">Nenhum pagamento registrado em {ano}.</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Quando houver lançamentos pagos, o resumo anual será preenchido automaticamente.
+              </p>
+            </div>
+          )}
+
           {/* ── Tabela comparativa ── */}
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm shadow-slate-200/60">
 
             {/* Cabeçalho */}
-            <div className={`${COL} px-4 py-2.5 border-b border-slate-100`}>
-              <p className="text-xs font-semibold text-slate-400">Mês</p>
-              <p className="text-xs font-semibold text-slate-400 text-right">Total pago</p>
-              <p className="text-xs font-semibold text-slate-400 text-right">Variação</p>
+            <div className={`${COL} px-3 sm:px-4 py-2.5 border-b border-slate-100 bg-slate-50`}>
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Mês</p>
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide text-right">Total pago</p>
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide text-right">Variação</p>
             </div>
 
             {porMes.map((m, i) => {
@@ -313,7 +335,7 @@ export default function Resumo() {
                 : null
 
               const rowBg = isAtual
-                ? 'bg-blue-50 hover:bg-blue-100'
+                ? 'bg-slate-100 hover:bg-slate-100'
                 : expandido
                 ? 'bg-slate-50 hover:bg-slate-100'
                 : 'hover:bg-slate-50'
@@ -323,26 +345,26 @@ export default function Resumo() {
 
                   {/* Linha da tabela */}
                   <div
-                    className={`${COL} px-4 py-3 border-b border-slate-50 transition-colors ${rowBg} ${!semDados ? 'cursor-pointer' : 'cursor-default'}`}
+                    className={`${COL} px-3 sm:px-4 py-3 border-b border-slate-100 transition-colors ${rowBg} ${!semDados ? 'cursor-pointer' : 'cursor-default'}`}
                     onClick={() => !semDados && toggleMes(i)}
                   >
                     {/* Mês + badges */}
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className={`text-sm font-semibold ${isAtual ? 'text-blue-700' : 'text-slate-800'}`}>
+                    <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                      <span className={`text-sm font-semibold truncate ${isAtual ? 'text-slate-950' : 'text-slate-800'}`}>
                         {NOMES_MESES[i]}
                       </span>
                       {isAtual && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 shrink-0">
+                        <span className="hidden sm:inline text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-700 shrink-0">
                           atual
                         </span>
                       )}
                       {!isAtual && i === idxMaisCaro && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 shrink-0">
+                        <span className="hidden sm:inline text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-100 shrink-0">
                           maior
                         </span>
                       )}
                       {!isAtual && i === idxMaisBarato && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 shrink-0">
+                        <span className="hidden sm:inline text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 shrink-0">
                           menor
                         </span>
                       )}
@@ -353,7 +375,7 @@ export default function Resumo() {
                       semDados
                         ? 'text-slate-300'
                         : isAtual
-                        ? 'text-blue-800'
+                        ? 'text-slate-950'
                         : 'text-slate-900'
                     }`}>
                       {semDados ? '—' : formatarValor(m.total)}
@@ -364,12 +386,12 @@ export default function Resumo() {
                       {variacaoPct !== null ? (
                         <>
                           {variacaoPct > 0 ? (
-                            <TrendingUp size={13} className="text-red-500 shrink-0" />
+                            <TrendingUp size={13} className="hidden sm:block text-red-500 shrink-0" />
                           ) : (
-                            <TrendingDown size={13} className="text-green-500 shrink-0" />
+                            <TrendingDown size={13} className="hidden sm:block text-emerald-500 shrink-0" />
                           )}
                           <span className={`text-xs font-semibold ${
-                            variacaoPct > 0 ? 'text-red-600' : 'text-green-600'
+                            variacaoPct > 0 ? 'text-red-600' : 'text-emerald-600'
                           }`}>
                             {variacaoPct > 0 ? '+' : ''}{variacaoPct.toFixed(1)}%
                           </span>
@@ -382,7 +404,7 @@ export default function Resumo() {
 
                   {/* Detalhe expandido */}
                   {expandido && !semDados && (
-                    <div className="px-4 py-4 border-b border-slate-100 bg-slate-50">
+                    <div className="px-3 sm:px-4 py-4 border-b border-slate-100 bg-slate-50">
                       <DetalheMes lancamentos={m.lancamentos} />
                     </div>
                   )}
@@ -392,9 +414,9 @@ export default function Resumo() {
             })}
 
             {/* Linha de total anual */}
-            <div className={`${COL} px-4 py-3.5 bg-slate-900 rounded-b-2xl`}>
+            <div className={`${COL} px-3 sm:px-4 py-3.5 bg-slate-900 rounded-b-2xl`}>
               <p className="text-sm font-bold text-white">Total {ano}</p>
-              <p className="text-sm font-black text-white text-right">{formatarValor(totalAnual)}</p>
+              <p className="text-sm font-black text-white text-right tabular-nums">{formatarValor(totalAnual)}</p>
               <div />
             </div>
 
