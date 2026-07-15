@@ -26,41 +26,57 @@ const GRUPOS_VENCIMENTO = [
     chave: 'vencidas',
     titulo: 'Vencidas',
     descricao: 'Contas com vencimento anterior a hoje',
-    classe: 'border-red-100 bg-white',
+    classe: 'border-red-200 bg-red-50/70',
     destaque: 'bg-red-500',
-    contador: 'text-red-700 bg-red-50 border-red-100',
+    tituloClass: 'text-red-950',
+    contador: 'text-red-800 bg-white/80 border-red-200',
+    badge: 'text-red-800 bg-white/80 border-red-200',
+    cardClass: 'border-red-100 bg-white/95 hover:border-red-200',
   },
   {
     chave: 'hoje',
     titulo: 'Vencem hoje',
     descricao: 'Prioridade do dia',
-    classe: 'border-amber-100 bg-white',
+    classe: 'border-amber-200 bg-amber-50/70',
     destaque: 'bg-amber-500',
-    contador: 'text-amber-800 bg-amber-50 border-amber-100',
+    tituloClass: 'text-amber-950',
+    contador: 'text-amber-900 bg-white/80 border-amber-200',
+    badge: 'text-amber-900 bg-white/80 border-amber-200',
+    cardClass: 'border-amber-100 bg-white/95 hover:border-amber-200',
   },
   {
     chave: 'proximas',
     titulo: 'Próximas',
     descricao: `Vencem em até ${DIAS_PROXIMAS} dias`,
-    classe: 'border-emerald-100 bg-white',
-    destaque: 'bg-emerald-500',
-    contador: 'text-emerald-700 bg-emerald-50 border-emerald-100',
+    classe: 'border-sky-200 bg-sky-50/70',
+    destaque: 'bg-sky-500',
+    tituloClass: 'text-sky-950',
+    contador: 'text-sky-800 bg-white/80 border-sky-200',
+    badge: 'text-sky-800 bg-white/80 border-sky-200',
+    cardClass: 'border-sky-100 bg-white/95 hover:border-sky-200',
   },
   {
     chave: 'futuras',
     titulo: 'Futuras',
     descricao: 'Vencimentos depois desse período',
-    classe: 'border-slate-200 bg-white',
-    destaque: 'bg-slate-300',
-    contador: 'text-slate-700 bg-slate-50 border-slate-200',
+    classe: 'border-slate-200 bg-slate-50/80',
+    destaque: 'bg-slate-400',
+    tituloClass: 'text-slate-950',
+    contador: 'text-slate-700 bg-white/80 border-slate-200',
+    badge: 'text-slate-700 bg-white/80 border-slate-200',
+    cardClass: 'border-slate-200 bg-white/95 hover:border-slate-300',
   },
   {
     chave: 'pagas',
     titulo: 'Pagas',
     descricao: 'Lançamentos pagos no filtro atual',
-    classe: 'border-slate-200 bg-white',
-    destaque: 'bg-slate-900',
-    contador: 'text-slate-700 bg-slate-50 border-slate-200',
+    classe: 'border-emerald-200 bg-emerald-50/70',
+    destaque: 'bg-emerald-500',
+    tituloClass: 'text-emerald-950',
+    contador: 'text-emerald-800 bg-white/80 border-emerald-200',
+    badge: 'text-emerald-800 bg-white/80 border-emerald-200',
+    cardClass: 'border-emerald-100 bg-white/95 hover:border-emerald-200',
+    centralizarCabecalho: true,
   },
 ]
 
@@ -190,6 +206,7 @@ function CardConta({
   onEditar,
   onExcluir,
   onVerLancamentos,
+  grupo,
 }) {
   const [menuAberto, setMenuAberto] = useState(false)
   const menuRef = useRef(null)
@@ -223,9 +240,10 @@ function CardConta({
   })()
 
   return (
-    <div className={`bg-white rounded-xl border p-3 sm:p-5 flex flex-col gap-2.5 sm:gap-4 shadow-sm shadow-slate-200/60 transition-colors min-w-0 ${
-      selecionada ? 'border-slate-900 ring-1 ring-slate-900' : 'border-slate-200 hover:border-slate-300'
+    <div className={`relative overflow-hidden rounded-xl border p-3 sm:p-5 flex flex-col gap-2.5 sm:gap-4 shadow-sm shadow-slate-200/60 transition-colors min-w-0 ${
+      selecionada ? 'border-slate-900 bg-white ring-1 ring-slate-900' : (grupo?.cardClass ?? 'border-slate-200 bg-white hover:border-slate-300')
     }`}>
+      <span className={`absolute inset-x-0 top-0 h-1 sm:inset-x-auto sm:inset-y-0 sm:left-0 sm:h-auto sm:w-1 ${grupo?.destaque ?? 'bg-slate-300'}`} />
 
       {/* Header */}
       <div className="flex items-start justify-between gap-1.5 sm:gap-3">
@@ -363,17 +381,26 @@ function SecaoGrupoContas({
 
   return (
     <section className={`rounded-2xl border p-3 sm:p-4 space-y-3 shadow-sm shadow-slate-200/60 ${grupo.classe}`}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 flex items-start gap-3">
-          <span className={`mt-1 h-8 w-1 rounded-full ${grupo.destaque}`} />
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-slate-950">{grupo.titulo}</h2>
-            <p className="text-xs text-slate-500 mt-0.5">{grupo.descricao}</p>
+      <div className={`rounded-xl border border-white/70 bg-white/55 px-3 py-3 ${grupo.centralizarCabecalho ? 'text-center' : ''}`}>
+        <div className={`flex gap-3 ${grupo.centralizarCabecalho ? 'flex-col items-center justify-center sm:flex-row sm:justify-between sm:text-left' : 'items-center justify-between'}`}>
+          <div className={`min-w-0 flex gap-3 ${grupo.centralizarCabecalho ? 'items-center justify-center sm:justify-start' : 'items-start'}`}>
+            {!grupo.centralizarCabecalho && (
+              <span className={`mt-1 h-8 w-1 rounded-full ${grupo.destaque}`} />
+            )}
+            <div className="min-w-0">
+              <div className={`flex flex-wrap items-center gap-2 ${grupo.centralizarCabecalho ? 'justify-center sm:justify-start' : ''}`}>
+                <h2 className={`text-sm font-semibold ${grupo.tituloClass ?? 'text-slate-950'}`}>{grupo.titulo}</h2>
+                <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${grupo.badge}`}>
+                  {grupo.titulo}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">{grupo.descricao}</p>
+            </div>
           </div>
+          <span className={`shrink-0 text-[11px] font-bold border rounded-full px-2.5 py-1 tabular-nums ${grupo.contador}`}>
+            {contas.length} {contas.length === 1 ? 'conta' : 'contas'}
+          </span>
         </div>
-        <span className={`shrink-0 text-[11px] font-bold border rounded-full px-2.5 py-1 tabular-nums ${grupo.contador}`}>
-          {contas.length}
-        </span>
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-1 xl:grid-cols-2 sm:gap-4">
@@ -387,6 +414,7 @@ function SecaoGrupoContas({
             onEditar={() => onEditar(conta)}
             onExcluir={() => onExcluir(conta)}
             onVerLancamentos={() => onVerLancamentos(conta)}
+            grupo={grupo}
           />
         ))}
       </div>
