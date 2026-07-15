@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Loader2, TrendingUp, TrendingDown, ChevronDown } from 'lucide-react'
+import { Loader2, ChevronDown } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { formatarMoeda as formatarValor } from '../lib/utils'
@@ -41,74 +41,64 @@ function DetalheMes({ lancamentos }) {
     [lancamentos]
   )
 
+  const secoes = [
+    {
+      titulo: 'Por imóvel',
+      itens: porCentro.map(([nome, total]) => ({ nome, total })),
+    },
+    {
+      titulo: 'Por titular',
+      itens: porTitular.map(({ nome, total, cor }) => ({ nome, total, cor })),
+    },
+    {
+      titulo: 'Contas pagas',
+      itens: contasOrdenadas.map(l => ({ key: l.id, nome: l.contas?.nome ?? '—', total: l.valor })),
+    },
+  ]
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-      {/* Por imóvel */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3">
-        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-3">
-          Por imóvel
-        </p>
-        <div className="space-y-2">
-          {porCentro.map(([nome, total]) => (
-            <div key={nome} className="flex items-center justify-between gap-3">
-              <p className="text-xs text-slate-700 truncate">{nome}</p>
-              <p className="text-xs font-bold text-slate-900 shrink-0 tabular-nums">{formatarValor(total)}</p>
-            </div>
-          ))}
+    <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+      <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Detalhamento
+          </p>
+          <p className="mt-1 text-sm font-semibold text-slate-950">
+            {lancamentos.length} {lancamentos.length === 1 ? 'pagamento registrado' : 'pagamentos registrados'}
+          </p>
         </div>
       </div>
 
-      {/* Por titular */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3">
-        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-3">
-          Por titular
-        </p>
-        <div className="space-y-2">
-          {porTitular.map(({ nome, total, cor }) => (
-            <div key={nome} className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-1.5 min-w-0">
-                {cor && (
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: cor }}
-                  />
-                )}
-                <p
-                  className="text-xs font-semibold truncate"
-                  style={{ color: cor ?? '#334155' }}
-                >
-                  {nome}
-                </p>
-              </div>
-              <p className="text-xs font-bold text-slate-900 shrink-0 tabular-nums">{formatarValor(total)}</p>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        {secoes.map(secao => (
+          <div key={secao.titulo} className="min-w-0">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+              {secao.titulo}
+            </p>
+            <div className="space-y-2">
+              {secao.itens.map(({ key, nome, total, cor }) => (
+                <div key={key ?? `${secao.titulo}-${nome}`} className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2 last:border-b-0 last:pb-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    {cor && (
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: cor }}
+                      />
+                    )}
+                    <p className="truncate text-xs font-medium text-slate-700">{nome}</p>
+                  </div>
+                  <p className="shrink-0 text-xs font-bold tabular-nums text-slate-950">{formatarValor(total)}</p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
-
-      {/* Contas pagas */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3">
-        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-3">
-          Contas pagas
-        </p>
-        <div className="space-y-2">
-          {contasOrdenadas.map(l => (
-            <div key={l.id} className="flex items-center justify-between gap-3">
-              <p className="text-xs text-slate-700 truncate">{l.contas?.nome ?? '—'}</p>
-              <p className="text-xs font-bold text-slate-900 shrink-0 tabular-nums">{formatarValor(l.valor)}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
     </div>
   )
 }
 
 // ── Página principal ─────────────────────────────────────────
-
-const COL = 'grid grid-cols-[minmax(0,1fr)_112px_76px] sm:grid-cols-[minmax(0,1fr)_150px_120px]'
 
 export default function Resumo() {
   const { workspaceId, loadingWorkspace, erroWorkspace } = useWorkspace()
@@ -197,6 +187,10 @@ export default function Resumo() {
     return mesesComDados.reduce((mn, m) => (m.total < mn.total ? m : mn)).mes
   }, [mesesComDados])
 
+  const melhorMes = idxMaisBarato >= 0 ? porMes[idxMaisBarato] : null
+  const maiorMes = idxMaisCaro >= 0 ? porMes[idxMaisCaro] : null
+  const mesesComPagamentoLabel = `${mesesComDados.length} ${mesesComDados.length === 1 ? 'mês com pagamento' : 'meses com pagamento'}`
+
   function toggleMes(i) {
     setMesExpandido(v => (v === i ? null : i))
   }
@@ -210,11 +204,11 @@ export default function Resumo() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Resumo financeiro</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Pagamentos do ano</h1>
+          <h1 className="mt-1 text-2xl font-bold text-slate-950">Fechamento financeiro</h1>
           <p className="mt-1 text-sm text-slate-500">
             {loading
               ? 'Carregando pagamentos...'
-              : `${lancamentos.length} pagamento${lancamentos.length !== 1 ? 's' : ''} registrado${lancamentos.length !== 1 ? 's' : ''} em ${ano}.`}
+              : `Consolidação dos pagamentos registrados em ${ano}.`}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -250,60 +244,88 @@ export default function Resumo() {
       ) : (
         <>
 
-          {/* ── Cards de resumo ── */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          {/* ── Fechamento executivo ── */}
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/60">
+            <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
+              <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Fechamento de {ano}
+                  </p>
+                  <p className="mt-3 text-sm font-medium text-slate-500">Total pago no ano</p>
+                  <p className="mt-2 text-3xl font-black leading-none text-slate-950 tabular-nums sm:text-5xl">
+                    {formatarValor(totalAnual)}
+                  </p>
+                </div>
 
-            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm shadow-slate-200/60">
-              <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wide mb-2">Total pago</p>
-              <p className="text-xl font-black text-slate-950 leading-none tabular-nums">
-                {formatarValor(totalAnual)}
-              </p>
-              <p className="mt-2 text-xs text-slate-500">{ano}</p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:min-w-[420px]">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Registros</p>
+                    <p className="mt-1 text-lg font-black text-slate-950 tabular-nums">{lancamentos.length}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Média</p>
+                    <p className="mt-1 text-sm font-black text-slate-950 tabular-nums">{formatarValor(mediaMensal)}</p>
+                  </div>
+                  <div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 sm:col-span-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Período</p>
+                    <p className="mt-1 text-sm font-bold text-slate-950">{mesesComPagamentoLabel}</p>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="bg-white border border-red-100 rounded-2xl p-4 shadow-sm shadow-slate-200/60">
-              <p className="text-[11px] text-red-500 font-semibold uppercase tracking-wide mb-1.5">Mês mais caro</p>
-              {idxMaisCaro >= 0 ? (
-                <>
-                  <p className="text-xs font-semibold text-slate-500 mb-1">
-                    {NOMES_MESES[idxMaisCaro]}
-                  </p>
-                  <p className="text-base font-black text-slate-950 leading-none tabular-nums">
-                    {formatarValor(porMes[idxMaisCaro].total)}
-                  </p>
-                </>
-              ) : (
-                <p className="text-base font-bold text-slate-300">—</p>
-              )}
+            <div className="grid grid-cols-1 divide-y divide-slate-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              <div className="px-4 py-3 sm:px-5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Maior mês</p>
+                <p className="mt-1 text-sm font-bold text-slate-950">
+                  {maiorMes ? NOMES_MESES[maiorMes.mes] : 'Sem referência'}
+                </p>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500 tabular-nums">
+                  {maiorMes ? formatarValor(maiorMes.total) : '—'}
+                </p>
+              </div>
+              <div className="px-4 py-3 sm:px-5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Menor mês</p>
+                <p className="mt-1 text-sm font-bold text-slate-950">
+                  {melhorMes ? NOMES_MESES[melhorMes.mes] : 'Sem referência'}
+                </p>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500 tabular-nums">
+                  {melhorMes ? formatarValor(melhorMes.total) : '—'}
+                </p>
+              </div>
+              <div className="px-4 py-3 sm:px-5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pagamentos</p>
+                <p className="mt-1 text-sm font-bold text-slate-950">
+                  {lancamentos.length} {lancamentos.length === 1 ? 'lançamento pago' : 'lançamentos pagos'}
+                </p>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500">Base anual consolidada</p>
+              </div>
             </div>
+          </section>
 
-            <div className="bg-white border border-emerald-100 rounded-2xl p-4 shadow-sm shadow-slate-200/60">
-              <p className="text-[11px] text-emerald-600 font-semibold uppercase tracking-wide mb-1.5">Mês mais baixo</p>
-              {idxMaisBarato >= 0 ? (
-                <>
-                  <p className="text-xs font-semibold text-slate-500 mb-1">
-                    {NOMES_MESES[idxMaisBarato]}
-                  </p>
-                  <p className="text-base font-black text-slate-950 leading-none tabular-nums">
-                    {formatarValor(porMes[idxMaisBarato].total)}
-                  </p>
-                </>
-              ) : (
-                <p className="text-base font-bold text-slate-300">—</p>
-              )}
+          {/* ── Leitura rápida ── */}
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60 sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Leitura rápida</p>
+                <h2 className="mt-1 text-base font-bold text-slate-950">Destaques do ano</h2>
+              </div>
             </div>
-
-            <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm shadow-slate-200/60">
-              <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wide mb-2">Média mensal</p>
-              <p className="text-xl font-black text-slate-950 leading-none tabular-nums">
-                {formatarValor(mediaMensal)}
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                {mesesComDados.length} {mesesComDados.length === 1 ? 'mês com pagamento' : 'meses com pagamento'}
-              </p>
+            <div className="divide-y divide-slate-100">
+              {[
+                ['Mês com maior pagamento', maiorMes ? `${NOMES_MESES[maiorMes.mes]} — ${formatarValor(maiorMes.total)}` : 'Sem referência'],
+                ['Mês com menor pagamento', melhorMes ? `${NOMES_MESES[melhorMes.mes]} — ${formatarValor(melhorMes.total)}` : 'Sem referência'],
+                ['Média mensal paga', formatarValor(mediaMensal)],
+                ['Total de contas pagas', `${lancamentos.length} ${lancamentos.length === 1 ? 'pagamento' : 'pagamentos'}`],
+              ].map(([label, valor]) => (
+                <div key={label} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-medium text-slate-600">{label}</p>
+                  <p className="text-sm font-bold text-slate-950 tabular-nums">{valor}</p>
+                </div>
+              ))}
             </div>
-
-          </div>
+          </section>
 
           {lancamentos.length === 0 && (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center shadow-sm shadow-slate-200/60">
@@ -314,16 +336,13 @@ export default function Resumo() {
             </div>
           )}
 
-          {/* ── Tabela comparativa ── */}
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm shadow-slate-200/60">
-
-            {/* Cabeçalho */}
-            <div className={`${COL} px-3 sm:px-4 py-2.5 border-b border-slate-100 bg-slate-50`}>
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Mês</p>
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide text-right">Total pago</p>
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide text-right">Variação</p>
+          {/* ── Movimento mensal ── */}
+          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/60">
+            <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Movimento mensal</p>
+              <h2 className="mt-1 text-base font-bold text-slate-950">Linha de pagamentos</h2>
             </div>
-
+            <div className="divide-y divide-slate-100">
             {porMes.map((m, i) => {
               const isFuturo  = anoHoje === ano && i > mesHojeIdx
               const isAtual   = i === mesAtualIdx
@@ -335,76 +354,73 @@ export default function Resumo() {
                 : null
 
               const rowBg = isAtual
-                ? 'bg-slate-100 hover:bg-slate-100'
+                ? 'bg-slate-50'
                 : expandido
-                ? 'bg-slate-50 hover:bg-slate-100'
-                : 'hover:bg-slate-50'
+                ? 'bg-slate-50/80'
+                : 'bg-white hover:bg-slate-50'
 
               return (
                 <div key={i} className={isFuturo ? 'opacity-50' : ''}>
 
-                  {/* Linha da tabela */}
                   <div
-                    className={`${COL} px-3 sm:px-4 py-3 border-b border-slate-100 transition-colors ${rowBg} ${!semDados ? 'cursor-pointer' : 'cursor-default'}`}
+                    className={`transition-colors ${rowBg} ${!semDados ? 'cursor-pointer' : 'cursor-default'}`}
                     onClick={() => !semDados && toggleMes(i)}
                   >
-                    {/* Mês + badges */}
-                    <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                      <span className={`text-sm font-semibold truncate ${isAtual ? 'text-slate-950' : 'text-slate-800'}`}>
-                        {NOMES_MESES[i]}
-                      </span>
-                      {isAtual && (
-                        <span className="hidden sm:inline text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-700 shrink-0">
-                          atual
-                        </span>
-                      )}
-                      {!isAtual && i === idxMaisCaro && (
-                        <span className="hidden sm:inline text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-100 shrink-0">
-                          maior
-                        </span>
-                      )}
-                      {!isAtual && i === idxMaisBarato && (
-                        <span className="hidden sm:inline text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 shrink-0">
-                          menor
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Total */}
-                    <p className={`text-sm font-bold text-right ${
-                      semDados
-                        ? 'text-slate-300'
-                        : isAtual
-                        ? 'text-slate-950'
-                        : 'text-slate-900'
-                    }`}>
-                      {semDados ? '—' : formatarValor(m.total)}
-                    </p>
-
-                    {/* Variação */}
-                    <div className="flex items-center justify-end gap-1">
-                      {variacaoPct !== null ? (
-                        <>
-                          {variacaoPct > 0 ? (
-                            <TrendingUp size={13} className="hidden sm:block text-red-500 shrink-0" />
-                          ) : (
-                            <TrendingDown size={13} className="hidden sm:block text-emerald-500 shrink-0" />
+                    <div className="grid grid-cols-1 gap-2 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_160px_110px] sm:items-center sm:px-5">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className={`text-sm font-bold ${isAtual ? 'text-slate-950' : 'text-slate-800'}`}>
+                            {NOMES_MESES[i]}
+                          </p>
+                          {isAtual && (
+                            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                              atual
+                            </span>
                           )}
-                          <span className={`text-xs font-semibold ${
-                            variacaoPct > 0 ? 'text-red-600' : 'text-emerald-600'
-                          }`}>
-                            {variacaoPct > 0 ? '+' : ''}{variacaoPct.toFixed(1)}%
-                          </span>
-                        </>
-                      ) : (
-                        <span className="text-xs text-slate-300">—</span>
-                      )}
+                          {!isAtual && i === idxMaisCaro && (
+                            <span className="rounded-full border border-red-100 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                              maior
+                            </span>
+                          )}
+                          {!isAtual && i === idxMaisBarato && (
+                            <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                              menor
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs font-medium text-slate-500">
+                          {m.lancamentos.length} {m.lancamentos.length === 1 ? 'pagamento registrado' : 'pagamentos registrados'}
+                        </p>
+                      </div>
+
+                      <p className={`text-lg font-black tabular-nums sm:text-right ${
+                        semDados ? 'text-slate-300' : 'text-slate-950'
+                      }`}>
+                        {semDados ? '—' : formatarValor(m.total)}
+                      </p>
+
+                      <div className="flex items-center justify-between gap-3 sm:justify-end">
+                        <span className={`text-xs font-semibold ${
+                          variacaoPct === null
+                            ? 'text-slate-300'
+                            : variacaoPct > 0
+                            ? 'text-red-600'
+                            : 'text-emerald-600'
+                        }`}>
+                          {variacaoPct === null ? 'Sem variação' : `${variacaoPct > 0 ? '+' : ''}${variacaoPct.toFixed(1)}%`}
+                        </span>
+                        {!semDados && (
+                          <ChevronDown
+                            size={15}
+                            className={`text-slate-400 transition-transform ${expandido ? 'rotate-180' : ''}`}
+                          />
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Detalhe expandido */}
                   {expandido && !semDados && (
-                    <div className="px-3 sm:px-4 py-4 border-b border-slate-100 bg-slate-50">
+                    <div className="bg-slate-50 px-3 py-3 sm:px-5 sm:py-4">
                       <DetalheMes lancamentos={m.lancamentos} />
                     </div>
                   )}
@@ -412,15 +428,12 @@ export default function Resumo() {
                 </div>
               )
             })}
-
-            {/* Linha de total anual */}
-            <div className={`${COL} px-3 sm:px-4 py-3.5 bg-slate-900 rounded-b-2xl`}>
-              <p className="text-sm font-bold text-white">Total {ano}</p>
-              <p className="text-sm font-black text-white text-right tabular-nums">{formatarValor(totalAnual)}</p>
-              <div />
             </div>
-
-          </div>
+            <div className="flex flex-col gap-1 rounded-b-2xl bg-slate-950 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <p className="text-sm font-bold text-white">Total consolidado de {ano}</p>
+              <p className="text-lg font-black text-white tabular-nums">{formatarValor(totalAnual)}</p>
+            </div>
+          </section>
 
         </>
       )}
