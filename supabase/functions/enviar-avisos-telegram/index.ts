@@ -11,6 +11,7 @@ const EXECUCAO_EXPIRADA_MINUTOS = 15
 const PRAZO_ALERTA_PADRAO = 3
 const PRAZO_ALERTA_MAXIMO = 30
 const LIMITE_ITENS_MENSAGEM = 15
+const LIMITE_MOSTRAR_TUDO_MENSAGEM = 20
 const LIMITE_CONTAS_POR_IMOVEL_MENSAGEM = 3
 const SCHEDULER_JANELA_MINUTOS = 15
 
@@ -480,6 +481,7 @@ function montarMensagem(tipo: TipoAviso, lancamentos: LancamentoAviso[], hoje: s
   ))
   const titularUnico = titulares.length === 1 ? titulares[0] : null
   const mostrarTitularPorLinha = titulares.length > 1
+  const mostrarTodasAsContas = totalPendente <= LIMITE_MOSTRAR_TUDO_MENSAGEM
   let totalExibido = 0
   let totalRepresentado = 0
 
@@ -540,7 +542,8 @@ function montarMensagem(tipo: TipoAviso, lancamentos: LancamentoAviso[], hoje: s
     itens: LancamentoAviso[],
     status: StatusMensagem,
   ) {
-    if (itens.length === 0 || totalExibido >= LIMITE_ITENS_MENSAGEM) return
+    if (itens.length === 0) return
+    if (!mostrarTodasAsContas && totalExibido >= LIMITE_ITENS_MENSAGEM) return
 
     const totalGrupo = somarValoresLancamentos(itens)
     let imoveisOcultos = 0
@@ -552,13 +555,17 @@ function montarMensagem(tipo: TipoAviso, lancamentos: LancamentoAviso[], hoje: s
     )
 
     for (const grupo of agruparPorImovel(itens)) {
-      if (totalExibido >= LIMITE_ITENS_MENSAGEM) {
+      if (!mostrarTodasAsContas && totalExibido >= LIMITE_ITENS_MENSAGEM) {
         imoveisOcultos += 1
         continue
       }
 
-      const limiteDisponivel = LIMITE_ITENS_MENSAGEM - totalExibido
-      const limiteImovel = Math.min(LIMITE_CONTAS_POR_IMOVEL_MENSAGEM, limiteDisponivel)
+      const limiteDisponivel = mostrarTodasAsContas
+        ? grupo.lancamentos.length
+        : LIMITE_ITENS_MENSAGEM - totalExibido
+      const limiteImovel = mostrarTodasAsContas
+        ? grupo.lancamentos.length
+        : Math.min(LIMITE_CONTAS_POR_IMOVEL_MENSAGEM, limiteDisponivel)
       const selecionados = grupo.lancamentos.slice(0, limiteImovel)
       if (selecionados.length === 0) {
         imoveisOcultos += 1
@@ -592,7 +599,7 @@ function montarMensagem(tipo: TipoAviso, lancamentos: LancamentoAviso[], hoje: s
   adicionarGrupo('🟢 <b>Próximas</b>', proximos, 'proximas')
 
   const ocultos = totalPendente - totalRepresentado
-  if (ocultos > 0) {
+  if (!mostrarTodasAsContas && ocultos > 0) {
     linhas.push('', `+ ${ocultos} ${pluralConta(ocultos)} ainda não detalhadas no aviso.`)
   }
 
