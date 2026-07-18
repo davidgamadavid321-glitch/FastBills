@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { Plus, MoreVertical, Loader2, Tag, Trash2, Search, Inbox, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react'
+import { Plus, MoreVertical, Loader2, Tag, Trash2, Search, Inbox, ChevronDown, ChevronUp, SlidersHorizontal, CheckCircle2, RotateCcw } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import * as LucideIcons from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -183,12 +183,24 @@ function dadosCentroConta(conta) {
   }
 }
 
+function lancamentoAcaoConta(conta) {
+  return conta.__lancamentoPago ?? conta.__lancamentoAcao ?? null
+}
+
+function chaveSelecaoConta(conta) {
+  const lancamento = lancamentoAcaoConta(conta)
+  return lancamento?.id ? `lancamento:${lancamento.id}` : `conta:${conta.id}`
+}
+
 // ── Sub-componentes ──────────────────────────────────────────
 
 function MenuBtn({ label, onClick, danger }) {
   return (
     <button
-      onClick={onClick}
+      onClick={(event) => {
+        event.stopPropagation()
+        onClick()
+      }}
       className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-slate-50 ${
         danger ? 'text-red-600' : 'text-slate-700'
       }`}
@@ -201,6 +213,7 @@ function MenuBtn({ label, onClick, danger }) {
 function CardConta({
   conta,
   modoSelecao,
+  selecaoPorCardAtiva,
   selecionada,
   onSelecionar,
   onEditar,
@@ -214,6 +227,7 @@ function CardConta({
   const titular = titularAtual(conta)
   const cor = titular?.cor
   const centro = dadosCentroConta(conta)
+  const cardSelecionavel = modoSelecao && selecaoPorCardAtiva
 
   useEffect(() => {
     if (!menuAberto) return
@@ -240,9 +254,16 @@ function CardConta({
   })()
 
   return (
-    <div className={`relative overflow-hidden rounded-xl border p-3 sm:p-5 flex flex-col gap-2.5 sm:gap-4 shadow-sm shadow-slate-200/60 transition-colors min-w-0 ${
-      selecionada ? 'border-slate-900 bg-white ring-1 ring-slate-900' : (grupo?.cardClass ?? 'border-slate-200 bg-white hover:border-slate-300')
-    }`}>
+    <div
+      onClick={cardSelecionavel ? () => onSelecionar(conta) : undefined}
+      className={`relative overflow-hidden rounded-xl border p-3 sm:p-5 flex flex-col gap-2.5 sm:gap-4 shadow-sm shadow-slate-200/60 transition-colors min-w-0 ${
+        cardSelecionavel ? 'cursor-pointer select-none' : ''
+      } ${
+        selecionada
+          ? 'border-slate-900 bg-slate-50 ring-1 ring-slate-900/20 shadow-slate-300/80'
+          : (grupo?.cardClass ?? 'border-slate-200 bg-white hover:border-slate-300')
+      }`}
+    >
       <span className={`absolute inset-x-0 top-0 h-1 sm:inset-x-auto sm:inset-y-0 sm:left-0 sm:h-auto sm:w-1 ${grupo?.destaque ?? 'bg-slate-300'}`} />
 
       {/* Header */}
@@ -252,9 +273,10 @@ function CardConta({
             <input
               type="checkbox"
               checked={selecionada}
-              onChange={() => onSelecionar(conta.id)}
+              onClick={(event) => event.stopPropagation()}
+              onChange={() => onSelecionar(conta)}
               aria-label={`Selecionar ${conta.nome}`}
-              className="mt-1 h-4 w-4 shrink-0 accent-slate-900 sm:mt-2.5"
+              className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-slate-900 sm:mt-2.5"
             />
           )}
           <div
@@ -291,7 +313,10 @@ function CardConta({
           {!modoSelecao && (
             <div ref={menuRef} className="relative">
               <button
-                onClick={() => setMenuAberto(m => !m)}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setMenuAberto(m => !m)
+                }}
                 className="p-1 hover:bg-slate-100 rounded-lg transition-colors sm:p-1.5"
               >
                 <MoreVertical size={15} className="text-slate-400 sm:w-4 sm:h-4" />
@@ -367,6 +392,7 @@ function SecaoGrupoContas({
   expandido,
   onToggleExpandido,
   modoSelecao,
+  selecaoPorCardAtiva,
   contasSelecionadas,
   onSelecionar,
   onEditar,
@@ -409,7 +435,8 @@ function SecaoGrupoContas({
             key={conta.__itemKey ?? conta.id}
             conta={conta}
             modoSelecao={modoSelecao}
-            selecionada={contasSelecionadas.has(conta.id)}
+            selecaoPorCardAtiva={selecaoPorCardAtiva}
+            selecionada={contasSelecionadas.has(chaveSelecaoConta(conta))}
             onSelecionar={onSelecionar}
             onEditar={() => onEditar(conta)}
             onExcluir={() => onExcluir(conta)}
@@ -475,7 +502,9 @@ export default function Contas() {
   const [modoSelecao, setModoSelecao] = useState(false)
   const [contasSelecionadas, setContasSelecionadas] = useState(() => new Set())
   const [excluindoSelecionadas, setExcluindoSelecionadas] = useState(false)
+  const [atualizandoSelecionadas, setAtualizandoSelecionadas] = useState(false)
   const [erroExclusaoLote, setErroExclusaoLote] = useState('')
+  const [feedbackLote, setFeedbackLote] = useState(null)
 
   const fetchData = useCallback(async () => {
     if (loadingWorkspace || erroWorkspace || !workspaceId) return
@@ -503,7 +532,7 @@ export default function Contas() {
       supabase.from('categorias').select('*').eq('workspace_id', workspaceId).order('nome'),
       supabase
         .from('lancamentos')
-        .select('id, conta_id, vencimento, status')
+        .select('id, conta_id, vencimento, status, data_pagamento, alterado_por, alterado_em')
         .eq('workspace_id', workspaceId),
     ])
     setContas(cs ?? [])
@@ -593,9 +622,14 @@ export default function Contas() {
     }
 
     contasFiltradas.forEach(conta => {
+      const lancamentoAcao = lancamentoRelevanteConta(conta, lancamentosPorConta)
       const { grupo } = grupoVencimentoConta(conta, hojeISO, lancamentosPorContaVencimento, lancamentosPorConta)
       if (grupo === 'pagas') return
-      inicial[grupo].push(conta)
+      inicial[grupo].push({
+        ...conta,
+        __itemKey: lancamentoAcao?.id ? `${conta.id}|${lancamentoAcao.vencimentoISO}|${lancamentoAcao.id}` : conta.id,
+        __lancamentoAcao: lancamentoAcao,
+      })
     })
 
     lancamentos.forEach(lancamento => {
@@ -649,6 +683,26 @@ export default function Contas() {
     filtroStatus !== FILTRO_TODOS,
     filtroRecorrencia !== FILTRO_TODOS,
   ].filter(Boolean).length
+
+  const itensSelecionaveis = useMemo(() => (
+    GRUPOS_VENCIMENTO.flatMap(grupo => contasAgrupadas[grupo.chave] ?? [])
+  ), [contasAgrupadas])
+
+  const itensSelecionados = useMemo(() => (
+    itensSelecionaveis.filter(conta => contasSelecionadas.has(chaveSelecaoConta(conta)))
+  ), [itensSelecionaveis, contasSelecionadas])
+
+  const lancamentosSelecionadosIds = useMemo(() => (
+    Array.from(new Set(
+      itensSelecionados
+        .map(conta => lancamentoAcaoConta(conta)?.id)
+        .filter(Boolean)
+    ))
+  ), [itensSelecionados])
+
+  const contasSelecionadasIds = useMemo(() => (
+    Array.from(new Set(itensSelecionados.map(conta => conta.id).filter(Boolean)))
+  ), [itensSelecionados])
 
   // ── Handlers ──
 
@@ -719,24 +773,28 @@ export default function Contas() {
     }
   }
 
-  function toggleSelecionarConta(contaId) {
+  function toggleSelecionarConta(conta) {
+    const chave = chaveSelecaoConta(conta)
     setContasSelecionadas(prev => {
       const proxima = new Set(prev)
-      if (proxima.has(contaId)) proxima.delete(contaId)
-      else proxima.add(contaId)
+      if (proxima.has(chave)) proxima.delete(chave)
+      else proxima.add(chave)
       return proxima
     })
     setErroExclusaoLote('')
+    setFeedbackLote(null)
   }
 
   function selecionarTodasVisiveis() {
-    setContasSelecionadas(new Set(contasFiltradas.map(conta => conta.id)))
+    setContasSelecionadas(new Set(itensSelecionaveis.map(chaveSelecaoConta)))
     setErroExclusaoLote('')
+    setFeedbackLote(null)
   }
 
   function limparSelecao() {
     setContasSelecionadas(new Set())
     setErroExclusaoLote('')
+    setFeedbackLote(null)
   }
 
   function cancelarSelecao() {
@@ -745,7 +803,7 @@ export default function Contas() {
   }
 
   async function excluirSelecionadas() {
-    const ids = [...contasSelecionadas]
+    const ids = contasSelecionadasIds
     if (ids.length === 0) return
 
     const confirmou = window.confirm(
@@ -756,6 +814,7 @@ export default function Contas() {
 
     setErroExclusaoLote('')
     setExcluindoSelecionadas(true)
+    setFeedbackLote(null)
 
     const excluidas = []
     const falhas = []
@@ -776,7 +835,11 @@ export default function Contas() {
     }
 
     if (falhas.length > 0) {
-      setContasSelecionadas(new Set(falhas))
+      setContasSelecionadas(new Set(
+        itensSelecionados
+          .filter(conta => falhas.includes(conta.id))
+          .map(chaveSelecaoConta)
+      ))
       setErroExclusaoLote(
         `${falhas.length} ${falhas.length === 1 ? 'conta não pôde' : 'contas não puderam'} ser excluída${falhas.length === 1 ? '' : 's'}. Tente novamente.`
       )
@@ -786,6 +849,68 @@ export default function Contas() {
     }
 
     setExcluindoSelecionadas(false)
+  }
+
+  async function atualizarStatusSelecionados(novoStatus) {
+    const ids = lancamentosSelecionadosIds
+    if (ids.length === 0) {
+      setFeedbackLote({
+        tipo: 'erro',
+        texto: 'Selecione contas com lançamento gerado para atualizar o status.',
+      })
+      return
+    }
+
+    setAtualizandoSelecionadas(true)
+    setErroExclusaoLote('')
+    setFeedbackLote(null)
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const agoraISO = new Date().toISOString()
+      const hoje = localISODate(new Date())
+      const alteradoPor = user?.user_metadata?.full_name || user?.email || ''
+      const payload = novoStatus === 'pago'
+        ? {
+          status: 'pago',
+          data_pagamento: hoje,
+          alterado_por: alteradoPor,
+          alterado_em: agoraISO,
+        }
+        : {
+          status: 'pendente',
+          data_pagamento: null,
+          alterado_por: alteradoPor,
+          alterado_em: agoraISO,
+        }
+
+      const { data, error } = await supabase
+        .from('lancamentos')
+        .update(payload)
+        .eq('workspace_id', workspaceId)
+        .in('id', ids)
+        .select('id, conta_id, vencimento, status, data_pagamento, alterado_por, alterado_em')
+
+      if (error) throw error
+
+      const atualizados = new Map((data ?? []).map(lancamento => [lancamento.id, lancamento]))
+      setLancamentos(prev => prev.map(lancamento => (
+        atualizados.get(lancamento.id) ?? lancamento
+      )))
+      setContasSelecionadas(new Set())
+      setFeedbackLote({
+        tipo: 'sucesso',
+        texto: `${ids.length} ${ids.length === 1 ? 'conta atualizada' : 'contas atualizadas'} com sucesso.`,
+      })
+    } catch (error) {
+      registrarErroDesenvolvimento('Erro ao atualizar contas selecionadas:', error)
+      setFeedbackLote({
+        tipo: 'erro',
+        texto: 'Não foi possível atualizar as contas selecionadas. Tente novamente.',
+      })
+    } finally {
+      setAtualizandoSelecionadas(false)
+    }
   }
 
   // ── Render ──
@@ -948,59 +1073,112 @@ export default function Contas() {
       </div>
 
       {/* Gerenciamento em lote */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm shadow-slate-200/60">
+      <div className={`border rounded-2xl p-4 sm:p-5 flex flex-col gap-3 shadow-sm shadow-slate-200/60 ${
+        itensSelecionados.length > 0
+          ? 'border-slate-300 bg-slate-950 text-white'
+          : 'border-slate-200 bg-white'
+      }`}>
         <div>
-          <p className="text-sm font-semibold text-slate-950">Operações em lote</p>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className={`text-sm font-semibold ${itensSelecionados.length > 0 ? 'text-white' : 'text-slate-950'}`}>
+            Operações em lote
+          </p>
+          <p className={`text-xs mt-0.5 ${itensSelecionados.length > 0 ? 'text-slate-300' : 'text-slate-500'}`}>
             {modoSelecao
-              ? `${contasSelecionadas.size} ${contasSelecionadas.size === 1 ? 'conta selecionada' : 'contas selecionadas'}`
-              : 'Selecione uma ou mais contas para excluir em lote.'}
+              ? itensSelecionados.length > 0
+                ? `${itensSelecionados.length} ${itensSelecionados.length === 1 ? 'conta selecionada' : 'contas selecionadas'} · toque nos cards para selecionar ou remover`
+                : 'Marque a primeira conta pelo checkbox; depois toque nos cards para selecionar mais.'
+              : 'Selecione contas para atualizar status ou executar ações em lote.'}
           </p>
           {erroExclusaoLote && <p className="text-xs text-red-500 mt-1.5">{erroExclusaoLote}</p>}
+          {feedbackLote && (
+            <p className={`text-xs mt-1.5 ${feedbackLote.tipo === 'sucesso' ? 'text-emerald-300' : 'text-red-300'}`}>
+              {feedbackLote.texto}
+            </p>
+          )}
         </div>
 
         {modoSelecao ? (
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={selecionarTodasVisiveis}
-              disabled={excluindoSelecionadas || contasFiltradas.length === 0}
-              className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
-            >
-              Selecionar visíveis
-            </button>
-            {contasSelecionadas.size > 0 && (
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap gap-2">
               <button
-                onClick={limparSelecao}
-                disabled={excluindoSelecionadas}
-                className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                onClick={selecionarTodasVisiveis}
+                disabled={excluindoSelecionadas || atualizandoSelecionadas || itensSelecionaveis.length === 0}
+                className={`px-3 py-1.5 border rounded-lg text-xs font-semibold disabled:opacity-40 transition-colors ${
+                  itensSelecionados.length > 0
+                    ? 'border-white/15 bg-white/10 text-white hover:bg-white/15'
+                    : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
               >
-                Limpar seleção
+                Selecionar visíveis
+              </button>
+              {itensSelecionados.length > 0 && (
+                <button
+                  onClick={limparSelecao}
+                  disabled={excluindoSelecionadas || atualizandoSelecionadas}
+                  className="px-3 py-1.5 border border-white/15 bg-white/10 rounded-lg text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-40 transition-colors"
+                >
+                  Limpar seleção
+                </button>
+              )}
+              <button
+                onClick={cancelarSelecao}
+                disabled={excluindoSelecionadas || atualizandoSelecionadas}
+                className={`px-3 py-1.5 text-xs font-semibold disabled:opacity-40 transition-colors ${
+                  itensSelecionados.length > 0 ? 'text-slate-300 hover:text-white' : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                Cancelar
+              </button>
+            </div>
+
+            {itensSelecionados.length > 0 && (
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:justify-end">
+                <button
+                  type="button"
+                  onClick={() => atualizarStatusSelecionados('pago')}
+                  disabled={atualizandoSelecionadas || excluindoSelecionadas}
+                  className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-600 disabled:opacity-50"
+                >
+                  {atualizandoSelecionadas ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                  {atualizandoSelecionadas ? 'Atualizando...' : 'Marcar como pago'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => atualizarStatusSelecionados('pendente')}
+                  disabled={atualizandoSelecionadas || excluindoSelecionadas}
+                  className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/15 disabled:opacity-50"
+                >
+                  {atualizandoSelecionadas ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+                  {atualizandoSelecionadas ? 'Atualizando...' : 'Marcar como pendente'}
+                </button>
+                <button
+                  onClick={excluirSelecionadas}
+                  disabled={excluindoSelecionadas || atualizandoSelecionadas}
+                  className="inline-flex min-h-10 items-center justify-center gap-1.5 px-3 py-2 border border-red-400/40 bg-red-500/15 text-red-100 rounded-lg text-xs font-semibold hover:bg-red-500/25 disabled:opacity-50 transition-colors"
+                >
+                  {excluindoSelecionadas
+                    ? <Loader2 size={13} className="animate-spin" />
+                    : <Trash2 size={13} />}
+                  {excluindoSelecionadas ? 'Excluindo...' : 'Excluir'}
+                </button>
+              </div>
+            )}
+
+            {itensSelecionados.length === 0 && (
+              <button
+                type="button"
+                onClick={selecionarTodasVisiveis}
+                disabled={itensSelecionaveis.length === 0}
+                className="self-start rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-40"
+              >
+                Selecionar tudo filtrado
               </button>
             )}
-            {contasSelecionadas.size > 0 && (
-              <button
-                onClick={excluirSelecionadas}
-                disabled={excluindoSelecionadas}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors"
-              >
-                {excluindoSelecionadas
-                  ? <Loader2 size={13} className="animate-spin" />
-                  : <Trash2 size={13} />}
-                {excluindoSelecionadas ? 'Excluindo...' : 'Excluir selecionadas'}
-              </button>
-            )}
-            <button
-              onClick={cancelarSelecao}
-              disabled={excluindoSelecionadas}
-              className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 disabled:opacity-40 transition-colors"
-            >
-              Cancelar
-            </button>
           </div>
         ) : (
           <button
-            onClick={() => { setModoSelecao(true); setErroExclusaoLote('') }}
-            disabled={contasFiltradas.length === 0}
+            onClick={() => { setModoSelecao(true); setErroExclusaoLote(''); setFeedbackLote(null) }}
+            disabled={itensSelecionaveis.length === 0}
             className="self-start sm:self-auto px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 disabled:opacity-40 transition-colors"
           >
             Selecionar contas
@@ -1058,6 +1236,7 @@ export default function Contas() {
               expandido={Boolean(gruposExpandidos[grupo.chave])}
               onToggleExpandido={() => toggleGrupo(grupo.chave)}
               modoSelecao={modoSelecao}
+              selecaoPorCardAtiva={itensSelecionados.length > 0}
               contasSelecionadas={contasSelecionadas}
               onSelecionar={toggleSelecionarConta}
               onEditar={setModalEdicao}
