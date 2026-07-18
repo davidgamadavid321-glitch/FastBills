@@ -110,7 +110,7 @@ function MiniLancamentoDia({ lancamento, selecionado, hoje }) {
 }
 
 function DiaCell({ dia, lancamentos, selecionado, ehHoje, hoje, onClick }) {
-  if (dia === null) return <div className="min-h-[74px] sm:min-h-[108px] rounded-xl border border-transparent" />
+  if (dia === null) return <div className="min-h-[58px] sm:min-h-[108px] rounded-xl border border-transparent" />
 
   const temContas = lancamentos.length > 0
   const pior = temContas ? piorStatusDia(lancamentos, hoje) : null
@@ -127,7 +127,7 @@ function DiaCell({ dia, lancamentos, selecionado, ehHoje, hoje, onClick }) {
 
   return (
     <div
-      className={`rounded-xl sm:rounded-2xl border p-1.5 sm:p-2 min-h-[74px] sm:min-h-[108px] cursor-pointer transition-all select-none flex flex-col gap-1.5 ${estado}`}
+      className={`rounded-xl sm:rounded-2xl border p-1 sm:p-2 min-h-[58px] sm:min-h-[108px] cursor-pointer transition-all select-none flex flex-col gap-1 sm:gap-1.5 ${estado}`}
       onClick={() => onClick(dia, temContas)}
     >
       <div className="flex items-center justify-between gap-1">
@@ -153,7 +153,7 @@ function DiaCell({ dia, lancamentos, selecionado, ehHoje, hoje, onClick }) {
         )}
       </div>
 
-      <div className="min-w-0 space-y-1">
+      <div className="hidden sm:block min-w-0 space-y-1">
         {visiveis.map(l => (
           <MiniLancamentoDia key={l.id} lancamento={l} selecionado={selecionado} hoje={hoje} />
         ))}
@@ -178,7 +178,7 @@ function CardLancamento({ lancamento, hoje, onClick }) {
 
   return (
     <div
-      className="rounded-xl border p-3 space-y-2 cursor-pointer shadow-sm hover:shadow-md transition-shadow"
+      className="rounded-xl border p-2.5 sm:p-3 space-y-2 cursor-pointer shadow-sm hover:shadow-md transition-shadow"
       style={cor
         ? { borderColor: `${cor}66`, backgroundColor: `${cor}10` }
         : { borderColor: '#f1f5f9', backgroundColor: '#f8fafc' }
@@ -193,7 +193,7 @@ function CardLancamento({ lancamento, hoje, onClick }) {
           <p className="text-sm font-semibold text-slate-900 truncate">
             {lancamento.contas?.nome ?? '—'}
           </p>
-          <p className="text-xs text-slate-500 truncate">
+          <p className="hidden sm:block text-xs text-slate-500 truncate">
             {lancamento.contas?.centros_custo?.nome ?? 'Geral'}
           </p>
         </div>
@@ -218,7 +218,7 @@ function PainelDia({ dia, lancamentos, ehHoje, hoje, onAdicionar, onCardClick })
         </h2>
         <button
           onClick={onAdicionar}
-          className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 px-2 py-1 rounded-lg transition-colors"
+          className="flex min-h-9 items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
         >
           <Plus size={13} />
           Adicionar
@@ -233,7 +233,7 @@ function PainelDia({ dia, lancamentos, ehHoje, hoje, onAdicionar, onCardClick })
           </button>
         </div>
       ) : (
-        <div className="space-y-2 overflow-y-auto max-h-[60vh]">
+        <div className="space-y-2 overflow-y-auto max-h-[60vh] sm:max-h-[62vh]">
           {lancamentos.map(l => (
             <CardLancamento key={l.id} lancamento={l} hoje={hoje} onClick={() => onCardClick?.(l)} />
           ))}
@@ -472,42 +472,42 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
 
       {/* Banner de alertas */}
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
           Visão geral do mês
         </p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-red-50 border border-red-100 rounded-2xl p-4 shadow-sm flex items-center gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
+          <div className="bg-red-50 border border-red-100 rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-sm flex items-center gap-2.5 sm:gap-3">
             <AlertTriangle size={16} className="text-red-500 shrink-0" />
             <div>
               <p className="text-[11px] text-red-600 font-semibold uppercase tracking-wide mb-0.5">Vencidos</p>
-              <p className="text-2xl font-black text-red-700 leading-none tabular-nums">{numVencidos}</p>
+              <p className="text-xl sm:text-2xl font-black text-red-700 leading-none tabular-nums">{numVencidos}</p>
             </div>
           </div>
-          <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 shadow-sm">
+          <div className="bg-amber-50 border border-amber-100 rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-sm">
             <p className="text-[11px] text-amber-600 font-semibold uppercase tracking-wide mb-0.5">Vence hoje</p>
-            <p className="text-2xl font-black text-amber-700 leading-none tabular-nums">{numHoje}</p>
+            <p className="text-xl sm:text-2xl font-black text-amber-700 leading-none tabular-nums">{numHoje}</p>
           </div>
-          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 shadow-sm">
+          <div className="bg-slate-50 border border-slate-100 rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-sm">
             <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wide mb-0.5">Pendentes</p>
-            <p className="text-2xl font-black text-slate-700 leading-none tabular-nums">{numPendentes}</p>
+            <p className="text-xl sm:text-2xl font-black text-slate-700 leading-none tabular-nums">{numPendentes}</p>
           </div>
-          <div className="bg-green-50 border border-green-100 rounded-2xl p-4 shadow-sm">
+          <div className="bg-green-50 border border-green-100 rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-sm">
             <p className="text-[11px] text-green-600 font-semibold uppercase tracking-wide mb-0.5">Total pago</p>
-            <p className="text-base font-black text-green-700 leading-tight tabular-nums">{formatarValor(totalPago)}</p>
+            <p className="text-sm sm:text-base font-black text-green-700 leading-tight tabular-nums">{formatarValor(totalPago)}</p>
           </div>
         </div>
       </div>
 
       {/* Filtros */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
         <select
           value={filterTitular}
           onChange={e => setFilterTitular(e.target.value)}
-          className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900 transition"
+          className="w-full sm:w-auto text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900 transition"
         >
           <option value="">Todos os titulares</option>
           {titulares.map(t => (
@@ -518,7 +518,7 @@ export default function Dashboard() {
         <select
           value={filterStatus}
           onChange={e => setFilterStatus(e.target.value)}
-          className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900 transition"
+          className="w-full sm:w-auto text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900 transition"
         >
           <option value="todos">Todos os status</option>
           <option value="pago">Pago</option>
@@ -529,13 +529,13 @@ export default function Dashboard() {
       </div>
 
       {/* Calendário + Painel lateral */}
-      <div className="flex gap-4 items-start">
+      <div className="flex flex-col gap-4 items-stretch lg:flex-row lg:items-start">
 
         {/* Calendário */}
-        <div className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-100 p-4 sm:p-6 shadow-sm">
+        <div className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-100 p-3 sm:p-6 shadow-sm">
 
           {/* Navegação de mês */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3 sm:mb-4 pb-3 border-b border-slate-100">
             <div className="min-w-0">
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
                 Calendário
@@ -545,7 +545,7 @@ export default function Dashboard() {
               </h2>
             </div>
 
-            <div className="flex items-center justify-between sm:justify-end gap-2">
+            <div className="grid grid-cols-[36px_minmax(0,1fr)_36px] items-center gap-2 sm:flex sm:justify-end">
             <button
               onClick={() => setCurrentMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
               className="h-9 w-9 border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors flex items-center justify-center shrink-0"
@@ -554,13 +554,13 @@ export default function Dashboard() {
               <ChevronLeft size={17} className="text-slate-600" />
             </button>
 
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="grid grid-cols-[minmax(0,1fr)_88px] items-center gap-2 min-w-0 sm:flex">
               {/* Select de mês */}
-              <div className="relative">
+              <div className="relative min-w-0">
                 <select
                   value={currentMonth.getMonth()}
                   onChange={e => setCurrentMonth(d => new Date(d.getFullYear(), parseInt(e.target.value), 1))}
-                  className="appearance-none cursor-pointer border border-slate-200 rounded-xl pl-3 pr-7 py-2 text-sm font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition max-w-[136px]"
+                  className="w-full appearance-none cursor-pointer border border-slate-200 rounded-xl pl-3 pr-7 py-2 text-sm font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition sm:max-w-[136px]"
                 >
                   {NOMES_MESES.map((nome, i) => (
                     <option key={i} value={i}>{nome}</option>
@@ -570,11 +570,11 @@ export default function Dashboard() {
               </div>
 
               {/* Select de ano */}
-              <div className="relative">
+              <div className="relative min-w-0">
                 <select
                   value={currentMonth.getFullYear()}
                   onChange={e => setCurrentMonth(d => new Date(parseInt(e.target.value), d.getMonth(), 1))}
-                  className="appearance-none cursor-pointer border border-slate-200 rounded-xl pl-3 pr-7 py-2 text-sm font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition"
+                  className="w-full appearance-none cursor-pointer border border-slate-200 rounded-xl pl-3 pr-7 py-2 text-sm font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900 transition"
                 >
                   {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(ano => (
                     <option key={ano} value={ano}>{ano}</option>
@@ -595,7 +595,7 @@ export default function Dashboard() {
           </div>
 
           {/* Cabeçalho dos dias da semana */}
-          <div className="grid grid-cols-7 gap-1.5 mb-1.5">
+          <div className="grid grid-cols-7 gap-1 mb-1.5 sm:gap-1.5">
             {DIAS_SEMANA.map(d => (
               <p key={d} className="text-center text-[10px] sm:text-[11px] font-bold text-slate-400 py-1">
                 {d}
@@ -613,7 +613,7 @@ export default function Dashboard() {
               <p className="text-sm text-red-500">{erroCarregamento}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-7 gap-1.5">
+            <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
               {grid.map((dia, idx) => (
                 <DiaCell
                   key={idx}
@@ -646,7 +646,7 @@ export default function Dashboard() {
 
       {/* Painel — mobile (abaixo do calendário) */}
       {selectedDay && (
-        <div className="lg:hidden bg-white rounded-2xl border border-slate-100 shadow-sm p-4 space-y-3">
+        <div className="lg:hidden bg-white rounded-2xl border border-slate-100 shadow-sm p-3 sm:p-4 space-y-3">
           <PainelDia
             dia={selectedDay}
             lancamentos={diaSelecionadoLancamentos}
