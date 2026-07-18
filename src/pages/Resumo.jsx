@@ -69,7 +69,7 @@ function DetalheMes({ lancamentos }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {secoes.map(secao => (
           <div key={secao.titulo} className="min-w-0">
             <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
@@ -77,7 +77,7 @@ function DetalheMes({ lancamentos }) {
             </p>
             <div className="space-y-2">
               {secao.itens.map(({ key, nome, total, cor }) => (
-                <div key={key ?? `${secao.titulo}-${nome}`} className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2 last:border-b-0 last:pb-0">
+                <div key={key ?? `${secao.titulo}-${nome}`} className="flex min-h-9 items-center justify-between gap-3 border-b border-slate-100 pb-2 last:border-b-0 last:pb-0">
                   <div className="flex min-w-0 items-center gap-2">
                     {cor && (
                       <span
@@ -198,7 +198,7 @@ export default function Resumo() {
   // ── Render ──
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 sm:space-y-5">
 
       {/* Header com seletor de ano */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -212,7 +212,7 @@ export default function Resumo() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-right shadow-sm shadow-slate-200/60">
+          <div className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm shadow-slate-200/60 sm:w-auto sm:text-right">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Ano</p>
             <div className="relative">
               <select
@@ -247,27 +247,27 @@ export default function Resumo() {
           {/* ── Fechamento executivo ── */}
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/60">
             <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
-              <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                     Fechamento de {ano}
                   </p>
                   <p className="mt-3 text-sm font-medium text-slate-500">Total pago no ano</p>
-                  <p className="mt-2 text-3xl font-black leading-none text-slate-950 tabular-nums sm:text-5xl">
+                  <p className="mt-2 text-3xl font-black leading-tight text-slate-950 tabular-nums sm:text-5xl sm:leading-none">
                     {formatarValor(totalAnual)}
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:min-w-[420px]">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:min-w-[420px]">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Registros</p>
                     <p className="mt-1 text-lg font-black text-slate-950 tabular-nums">{lancamentos.length}</p>
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Média</p>
                     <p className="mt-1 text-sm font-black text-slate-950 tabular-nums">{formatarValor(mediaMensal)}</p>
                   </div>
-                  <div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 sm:col-span-1">
+                  <div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 sm:col-span-1 sm:py-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Período</p>
                     <p className="mt-1 text-sm font-bold text-slate-950">{mesesComPagamentoLabel}</p>
                   </div>
@@ -319,7 +319,7 @@ export default function Resumo() {
                 ['Média mensal paga', formatarValor(mediaMensal)],
                 ['Total de contas pagas', `${lancamentos.length} ${lancamentos.length === 1 ? 'pagamento' : 'pagamentos'}`],
               ].map(([label, valor]) => (
-                <div key={label} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+                <div key={label} className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:py-3">
                   <p className="text-sm font-medium text-slate-600">{label}</p>
                   <p className="text-sm font-bold text-slate-950 tabular-nums">{valor}</p>
                 </div>
@@ -366,7 +366,7 @@ export default function Resumo() {
                     className={`transition-colors ${rowBg} ${!semDados ? 'cursor-pointer' : 'cursor-default'}`}
                     onClick={() => !semDados && toggleMes(i)}
                   >
-                    <div className="grid grid-cols-1 gap-2 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_160px_110px] sm:items-center sm:px-5">
+                    <div className="grid min-h-[76px] grid-cols-1 gap-2 px-4 py-3.5 sm:grid-cols-[minmax(0,1fr)_160px_110px] sm:items-center sm:px-5 sm:py-4">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className={`text-sm font-bold ${isAtual ? 'text-slate-950' : 'text-slate-800'}`}>
@@ -393,13 +393,13 @@ export default function Resumo() {
                         </p>
                       </div>
 
-                      <p className={`text-lg font-black tabular-nums sm:text-right ${
+                      <p className={`text-base font-black tabular-nums sm:text-lg sm:text-right ${
                         semDados ? 'text-slate-300' : 'text-slate-950'
                       }`}>
                         {semDados ? '—' : formatarValor(m.total)}
                       </p>
 
-                      <div className="flex items-center justify-between gap-3 sm:justify-end">
+                      <div className="flex min-h-7 items-center justify-between gap-3 sm:justify-end">
                         <span className={`text-xs font-semibold ${
                           variacaoPct === null
                             ? 'text-slate-300'
