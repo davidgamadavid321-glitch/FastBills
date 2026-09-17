@@ -33,7 +33,7 @@ function MenuBtn({ label, onClick, danger, disabled }) {
   )
 }
 
-function CardCentro({ centro, titulares, totalMensal, contasCount, onEditar, onAlterarStatus, onTrocarTitular, onVerContas, alterandoStatus }) {
+function CardCentro({ centro, titulares, totalMensal, contasCount, onEditar, onAlterarStatus, onTrocarTitular, onVerContas, alterandoStatus, podeAdministrar }) {
   const [menuAberto, setMenuAberto] = useState(false)
   const menuRef = useRef(null)
   const isAtivo = centro.status === 'ativo'
@@ -70,7 +70,7 @@ function CardCentro({ centro, titulares, totalMensal, contasCount, onEditar, onA
           >
             {isAtivo ? 'Ativo' : 'Configuração'}
           </span>
-          <div ref={menuRef} className="relative">
+          {podeAdministrar && <div ref={menuRef} className="relative">
             <button
               onClick={() => setMenuAberto(m => !m)}
               className="h-8 w-8 flex items-center justify-center hover:bg-slate-100 rounded-lg transition-colors"
@@ -92,7 +92,7 @@ function CardCentro({ centro, titulares, totalMensal, contasCount, onEditar, onA
                 />
               </div>
             )}
-          </div>
+          </div>}
         </div>
       </div>
 
@@ -149,7 +149,7 @@ function CardCentro({ centro, titulares, totalMensal, contasCount, onEditar, onA
 // ── Página principal ─────────────────────────────────────────
 
 export default function Imoveis() {
-  const { workspaceId, loadingWorkspace, erroWorkspace } = useWorkspace()
+  const { workspaceId, podeAdministrar, loadingWorkspace, erroWorkspace } = useWorkspace()
   const navigate = useNavigate()
 
   const [centros, setCentros]                   = useState([])
@@ -160,6 +160,7 @@ export default function Imoveis() {
   const [erroCarregamento, setErroCarregamento] = useState('')
   const [erroStatus, setErroStatus]             = useState('')
   const [alterandoStatusId, setAlterandoStatusId] = useState(null)
+  const fetchRequestRef = useRef(0)
 
   const [modalCadastro, setModalCadastro]           = useState(false)
   const [modalEdicao, setModalEdicao]               = useState(null)
@@ -168,6 +169,7 @@ export default function Imoveis() {
   const fetchData = useCallback(async () => {
     if (loadingWorkspace || erroWorkspace || !workspaceId) return
 
+    const requestId = ++fetchRequestRef.current
     setLoading(true)
     setErroCarregamento('')
 
@@ -194,6 +196,8 @@ export default function Imoveis() {
       supabase.from('titulares').select('*').eq('workspace_id', workspaceId).order('nome'),
     ])
 
+    if (requestId !== fetchRequestRef.current) return
+
     const erro = erroCs || erroCt || erroLc || erroTs
     if (erro) {
       if (import.meta.env.DEV) console.error('Erro ao carregar imóveis:', erro)
@@ -209,7 +213,10 @@ export default function Imoveis() {
     setLoading(false)
   }, [workspaceId, loadingWorkspace, erroWorkspace])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => {
+    fetchData()
+    return () => { fetchRequestRef.current += 1 }
+  }, [fetchData])
 
   // Titulares únicos por centro (via contas.titular_id)
   const titularesPorCentro = useMemo(() => {
@@ -335,13 +342,13 @@ export default function Imoveis() {
             Organize os imóveis, unidades e centros usados para agrupar contas e lançamentos.
           </p>
         </div>
-        <button
+        {podeAdministrar && <button
           onClick={() => setModalCadastro(true)}
           className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition-colors sm:w-auto"
         >
           <Plus size={14} />
           Novo imóvel
-        </button>
+        </button>}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -368,13 +375,13 @@ export default function Imoveis() {
           <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-slate-600">
             Cadastre o primeiro centro de custo para começar a organizar contas e responsáveis.
           </p>
-          <button
+          {podeAdministrar && <button
             onClick={() => setModalCadastro(true)}
             className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
           >
             <Plus size={14} />
             Cadastrar primeiro imóvel
-          </button>
+          </button>}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -390,21 +397,22 @@ export default function Imoveis() {
               onTrocarTitular={() => setModalTrocarTitular(centro)}
               onVerContas={() => navigate('/contas', { state: { centroId: centro.id } })}
               alterandoStatus={alterandoStatusId === centro.id}
+              podeAdministrar={podeAdministrar}
             />
           ))}
 
-          <button
+          {podeAdministrar && <button
             onClick={() => setModalCadastro(true)}
             className="rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center gap-3 p-8 text-slate-400 hover:border-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors min-h-[190px]"
           >
             <Plus size={20} />
             <span className="text-sm font-semibold">Novo imóvel</span>
-          </button>
+          </button>}
         </div>
       )}
 
       {/* Modais */}
-      {modalCadastro && (
+      {podeAdministrar && modalCadastro && (
         <ModalFormCentro
           centro={null}
           onClose={() => setModalCadastro(false)}
@@ -412,7 +420,7 @@ export default function Imoveis() {
         />
       )}
 
-      {modalEdicao && (
+      {podeAdministrar && modalEdicao && (
         <ModalFormCentro
           centro={modalEdicao}
           onClose={() => setModalEdicao(null)}
@@ -420,7 +428,7 @@ export default function Imoveis() {
         />
       )}
 
-      {modalTrocarTitular && (
+      {podeAdministrar && modalTrocarTitular && (
         <ModalTrocarTitular
           centro={modalTrocarTitular}
           titulares={todosOsTitulares}

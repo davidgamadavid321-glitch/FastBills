@@ -155,13 +155,18 @@ async function autorizar(req: Request, origem: OrigemAviso): Promise<DadosAutori
   return { userId: data.user.id }
 }
 
-function validarBody(body: unknown): { tipo?: TipoAvisoLegado; origem: OrigemAviso; modo: ModoAviso } {
+function validarBody(body: unknown): {
+  tipo?: TipoAvisoLegado
+  origem: OrigemAviso
+  modo: ModoAviso
+  idempotencyKey?: string
+} {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new ErroRequisicao('Corpo da requisicao invalido.')
   }
 
   const payload = body as Record<string, unknown>
-  const chavesPermitidas = new Set(['tipo', 'origem', 'modo'])
+  const chavesPermitidas = new Set(['tipo', 'origem', 'modo', 'idempotency_key'])
   const chavesInvalidas = Object.keys(payload).filter((chave) => !chavesPermitidas.has(chave))
   if (chavesInvalidas.length > 0) {
     throw new ErroRequisicao('Parametros nao permitidos na requisicao.')
@@ -181,6 +186,9 @@ function validarBody(body: unknown): { tipo?: TipoAvisoLegado; origem: OrigemAvi
     if (payload.tipo !== undefined) {
       throw new ErroRequisicao('Tipo nao deve ser informado no modo scheduler.')
     }
+    if (payload.idempotency_key !== undefined) {
+      throw new ErroRequisicao('Chave manual nao deve ser informada no modo scheduler.')
+    }
 
     return { origem: payload.origem, modo: 'scheduler' }
   }
@@ -189,7 +197,23 @@ function validarBody(body: unknown): { tipo?: TipoAvisoLegado; origem: OrigemAvi
     throw new ErroRequisicao('Tipo de aviso invalido.')
   }
 
-  return { tipo: payload.tipo, origem: payload.origem, modo: 'legado' }
+  if (payload.origem === 'manual') {
+    if (
+      typeof payload.idempotency_key !== 'string'
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.idempotency_key)
+    ) {
+      throw new ErroRequisicao('Chave idempotente de envio invalida.')
+    }
+  } else if (payload.idempotency_key !== undefined) {
+    throw new ErroRequisicao('Chave manual nao permitida para o cron.')
+  }
+
+  return {
+    tipo: payload.tipo,
+    origem: payload.origem,
+    modo: 'legado',
+    idempotencyKey: payload.idempotency_key as string | undefined,
+  }
 }
 
 function dataSaoPaulo(data = new Date()) {
@@ -378,7 +402,7 @@ function slotsDevidos(config: ConfigAlertasTelegram, agora = new Date()) {
 async function obterWorkspaceUnicoDoUsuario(userId: string) {
   const { data, error } = await supabase
     .from('workspace_members')
-    .select('workspace_id')
+    .select('workspace_id, papel')
     .eq('user_id', userId)
 
   if (error) throw error
@@ -390,6 +414,10 @@ async function obterWorkspaceUnicoDoUsuario(userId: string) {
       'Usuario possui mais de um workspace. O seletor sera implementado em uma etapa futura.',
       409,
     )
+  }
+
+  if (!['owner', 'admin'].includes(data[0].papel as string)) {
+    throw new ErroRequisicao('Somente administradores podem enviar avisos manualmente.', 403)
   }
 
   return data[0].workspace_id as string
@@ -453,6 +481,23 @@ async function buscarLancamentosWorkspace(
 
   if (error) throw error
   return data ?? []
+}
+
+async function garantirCompetenciasDaJanela(workspaceId: string, inicio: string, fim: string) {
+  const [anoInicio, mesInicio] = inicio.split('-').map(Number)
+  const [anoFim, mesFim] = fim.split('-').map(Number)
+  const cursor = new Date(Date.UTC(anoInicio, mesInicio - 1, 1))
+  const limite = new Date(Date.UTC(anoFim, mesFim - 1, 1))
+
+  while (cursor <= limite) {
+    const { error } = await supabase.rpc('garantir_competencia_recorrente', {
+      p_workspace_id: workspaceId,
+      p_ano: cursor.getUTCFullYear(),
+      p_mes: cursor.getUTCMonth() + 1,
+    })
+    if (error) throw error
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1)
+  }
 }
 
 function montarMensagem(tipo: TipoAviso, lancamentos: LancamentoAviso[], hoje: string) {
@@ -734,6 +779,40 @@ async function enviarTelegram(chatId: number | string, mensagem: string) {
   }
 }
 
+async function enviarTelegramIdempotente(
+  workspaceId: string,
+  chaveExecucao: string,
+  chatId: number | string,
+  mensagem: string,
+) {
+  const { data: reservaId, error: erroReserva } = await supabase.rpc('reservar_envio_telegram', {
+    p_workspace_id: workspaceId,
+    p_chave_execucao: chaveExecucao,
+    p_chat_id: String(chatId),
+  })
+
+  if (erroReserva) throw erroReserva
+  if (!reservaId) return false
+
+  try {
+    await enviarTelegram(chatId, mensagem)
+    const { error } = await supabase.rpc('finalizar_envio_telegram', {
+      p_id: reservaId,
+      p_status: 'enviado',
+      p_erro: null,
+    })
+    if (error) throw error
+    return true
+  } catch (error) {
+    await supabase.rpc('finalizar_envio_telegram', {
+      p_id: reservaId,
+      p_status: 'erro',
+      p_erro: 'Falha ao enviar aviso para o destinatario.',
+    })
+    throw error
+  }
+}
+
 async function processarWorkspace(
   workspaceId: string,
   tipo: TipoAviso,
@@ -744,7 +823,8 @@ async function processarWorkspace(
     prazo?: number
     timezone?: string
     configuracoes?: ConfiguracoesWorkspace
-  } = {},
+    chaveExecucao: string
+  },
 ): Promise<ResultadoWorkspace> {
   let execucaoId: string | null = null
   const slot = opcoes.slot ?? null
@@ -788,6 +868,8 @@ async function processarWorkspace(
       }
     }
 
+    const limiteCompetencias = somarDiasLocal(hoje, prazo, timezone)
+    await garantirCompetenciasDaJanela(workspaceId, hoje, limiteCompetencias)
     const lancamentos = await buscarLancamentosWorkspace(workspaceId, tipo, hoje, prazo, timezone)
     const mensagem = montarMensagem(tipo, lancamentos, hoje)
     if (!mensagem) {
@@ -807,9 +889,23 @@ async function processarWorkspace(
     }
 
     let envios = 0
+    let falhasEnvio = 0
     for (const chat of chats) {
-      await enviarTelegram(chat.chat_id, mensagem)
-      envios += 1
+      try {
+        const enviado = await enviarTelegramIdempotente(
+          workspaceId,
+          opcoes.chaveExecucao,
+          chat.chat_id,
+          mensagem,
+        )
+        if (enviado) envios += 1
+      } catch {
+        falhasEnvio += 1
+      }
+    }
+
+    if (falhasEnvio > 0) {
+      throw new Error(`Falha ao enviar avisos para ${falhasEnvio} destinatario(s).`)
     }
 
     await atualizarExecucao(execucaoId, workspaceId, 'enviado', {
@@ -872,6 +968,7 @@ async function processarScheduler() {
           prazo: alertas.prazo,
           timezone: alertas.timezone,
           configuracoes,
+          chaveExecucao: `cron:scheduler:${dataReferencia}:${slot}`,
         }))
       }
     } catch {
@@ -902,7 +999,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => null)
-    const { tipo, origem, modo } = validarBody(body)
+    const { tipo, origem, modo, idempotencyKey } = validarBody(body)
     const autorizacao = await autorizar(req, origem)
     const hoje = dataSaoPaulo()
 
@@ -930,7 +1027,9 @@ Deno.serve(async (req) => {
 
     if (origem === 'manual') {
       const workspaceId = await obterWorkspaceUnicoDoUsuario(autorizacao.userId as string)
-      const resultado = await processarWorkspace(workspaceId, tipo, origem, hoje)
+      const resultado = await processarWorkspace(workspaceId, tipo, origem, hoje, {
+        chaveExecucao: `manual:${idempotencyKey}`,
+      })
 
       if (resultado.duplicado) {
         return json({
@@ -963,7 +1062,9 @@ Deno.serve(async (req) => {
 
     for (const workspaceId of workspaceIds) {
       try {
-        resultados.push(await processarWorkspace(workspaceId, tipo, origem, hoje))
+        resultados.push(await processarWorkspace(workspaceId, tipo, origem, hoje, {
+          chaveExecucao: `cron:${tipo}:${hoje}`,
+        }))
       } catch {
         falhas += 1
       }

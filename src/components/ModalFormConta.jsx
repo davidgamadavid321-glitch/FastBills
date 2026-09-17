@@ -3,7 +3,8 @@ import { X, Plus, Loader2, Tag } from 'lucide-react'
 import * as LucideIcons from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
-import { localISODate } from '../lib/utils'
+import { gerarLancamentosIniciais } from '../lib/recorrencias'
+import { useHojeISO } from '../hooks/useHojeISO'
 import ModalFormCentro from './ModalFormCentro'
 
 const RECORRENCIA = [
@@ -39,6 +40,11 @@ export default function ModalFormConta({
 }) {
   const isEdicao = !!conta
   const { workspaceId } = useWorkspace()
+  const hoje = useHojeISO()
+  // Conta que ja era 'uma_vez' mas nao tem lancamento pendente/futuro pra
+  // reconciliar (ex.: o unico lancamento ja foi pago). Nesse caso, editar um
+  // campo qualquer (nome, categoria) nao deve travar exigindo uma data nova.
+  const contaJaUmaVezSemPendencia = isEdicao && conta?.recorrencia === 'uma_vez' && !conta?.__lancamentoAcao
   const [categorias, setCategorias] = useState(catsProp)
   const [categoriaSelecionada, setCategoriaSelecionada] = useState(
     conta ? (catsProp.find(c => c.id === conta.categoria_id) ?? null) : null
@@ -57,6 +63,9 @@ export default function ModalFormConta({
     recorrencia:      conta?.recorrencia      ?? 'mensal',
     dia_vencimento:   conta?.dia_vencimento   ?? '',
     mes_vencimento:   conta?.mes_vencimento   ?? '',
+    data_vencimento_unica: conta?.recorrencia === 'uma_vez'
+      ? (conta?.__lancamentoAcao?.vencimentoISO ?? '')
+      : '',
     valor_referencia: conta?.valor_referencia ?? '',
     status_contrato:  conta?.status_contrato  ?? 'ativo',
   })
@@ -69,6 +78,8 @@ export default function ModalFormConta({
   const overlayRef = useRef(null)
   const novaCatInputRef = useRef(null)
   const salvandoCatRef = useRef(false)
+  const salvandoRef = useRef(false)
+  const requisicaoIdRef = useRef(crypto.randomUUID())
 
   useEffect(() => {
     if (criandoCategoria) novaCatInputRef.current?.focus()
@@ -111,11 +122,31 @@ export default function ModalFormConta({
   }
 
   async function handleSalvar() {
+    if (salvandoRef.current) return
+
     const nome = form.nome.trim()
-    const dia = Number(form.dia_vencimento)
-    const mesVencimento = form.recorrencia === 'anual'
-      ? Number(form.mes_vencimento)
-      : null
+    const umaVezSelecionada = form.recorrencia === 'uma_vez'
+
+    const dataUnicaPreenchida = /^\d{4}-\d{2}-\d{2}$/.test(form.data_vencimento_unica)
+
+    let dia = null
+    let mesVencimento = null
+    if (umaVezSelecionada) {
+      if (dataUnicaPreenchida) {
+        const [, , mesStr, diaStr] = /^(\d{4})-(\d{2})-(\d{2})$/.exec(form.data_vencimento_unica)
+        mesVencimento = Number(mesStr)
+        dia = Number(diaStr)
+      } else {
+        // Sem data nova informada: so' chega aqui se contaJaUmaVezSemPendencia
+        // permitir salvar mesmo assim (nada a agendar). Mantém metadado atual.
+        dia = conta?.dia_vencimento ?? null
+        mesVencimento = conta?.mes_vencimento ?? null
+      }
+    } else {
+      dia = Number(form.dia_vencimento)
+      mesVencimento = form.recorrencia === 'anual' ? Number(form.mes_vencimento) : null
+    }
+
     const valorReferencia = form.valor_referencia === ''
       ? null
       : Number(form.valor_referencia)
@@ -124,12 +155,23 @@ export default function ModalFormConta({
     if (!workspaceId)               { setErro('Espaço de trabalho não disponível. Tente novamente.'); return }
     if (!nome)                      { setErro('Nome é obrigatório.'); return }
     if (!categoriaSelecionada)      { setErro('Selecione uma categoria.'); return }
-    if (!Number.isInteger(dia) || dia < 1 || dia > 31) { setErro('Dia inválido (1–31).'); return }
     if (!RECORRENCIAS_VALIDAS.has(form.recorrencia)) { setErro('Recorrência inválida.'); return }
     if (!STATUS_CONTRATO_VALIDOS.has(form.status_contrato)) { setErro('Status do contrato inválido.'); return }
-    if (form.recorrencia === 'anual' && (!Number.isInteger(mesVencimento) || mesVencimento < 1 || mesVencimento > 12)) {
-      setErro('Informe o mês de vencimento.')
-      return
+    if (umaVezSelecionada) {
+      if (!dataUnicaPreenchida && !contaJaUmaVezSemPendencia) {
+        setErro('Informe a data de vencimento.')
+        return
+      }
+      if (dataUnicaPreenchida && form.data_vencimento_unica < hoje) {
+        setErro('A data de vencimento deve ser hoje ou uma data futura.')
+        return
+      }
+    } else {
+      if (!Number.isInteger(dia) || dia < 1 || dia > 31) { setErro('Dia inválido (1–31).'); return }
+      if (form.recorrencia === 'anual' && (!Number.isInteger(mesVencimento) || mesVencimento < 1 || mesVencimento > 12)) {
+        setErro('Informe o mês de vencimento.')
+        return
+      }
     }
     if (valorReferencia !== null && (!Number.isFinite(valorReferencia) || valorReferencia < 0)) {
       setErro('Valor de referência inválido.')
@@ -137,33 +179,8 @@ export default function ModalFormConta({
     }
 
     setErro('')
-    setSalvando(true)
 
-    const hoje            = localISODate(new Date())
     const novoTitularId   = form.titular_id  || null
-    const ctAtivo         = conta?.contas_titulares?.find(ct => ct.fim === null)
-    const titularAnterior = ctAtivo?.titular_id ?? conta?.titular_id ?? null
-    const titularMudou    = isEdicao && novoTitularId !== titularAnterior
-
-    const payload = {
-      nome,
-      categoria_id:     categoriaSelecionada.id,
-      centro_id:        centroIdFinal,
-      recorrencia:      form.recorrencia,
-      dia_vencimento:   dia,
-      mes_vencimento:   mesVencimento,
-      valor_referencia: valorReferencia,
-      status_contrato:  form.status_contrato,
-      workspace_id:     workspaceId,
-    }
-
-    // Na edição, quem grava titular_id é a RPC trocar_titular_conta (abaixo),
-    // que também gerencia o histórico em contas_titulares. Incluir aqui
-    // faria a RPC ler o valor já atualizado e achar que nada mudou.
-    if (!isEdicao) {
-      payload.titular_id = novoTitularId
-    }
-
     const select = `
       *,
       centros_custo:centros_custo!contas_workspace_centro_fkey(nome, tipo),
@@ -175,52 +192,93 @@ export default function ModalFormConta({
       )
     `
 
-    const query = isEdicao
-      ? supabase.from('contas').update(payload).eq('id', conta.id).eq('workspace_id', workspaceId).select(select).single()
-      : supabase.from('contas').insert(payload).select(select).single()
+    salvandoRef.current = true
+    setSalvando(true)
 
     try {
-      const { data, error } = await query
-      if (error) throw error
+      let contaId = conta?.id
+      let idsLancamentosAtualizados = []
 
-      if (titularMudou) {
-        const { error: erroTroca } = await supabase.rpc('trocar_titular_conta', {
+      if (isEdicao) {
+        const { data: resultado, error } = await supabase.rpc('atualizar_conta_com_vencimentos', {
           p_workspace_id: workspaceId,
           p_conta_id: conta.id,
-          p_novo_titular_id: novoTitularId,
+          p_nome: nome,
+          p_categoria_id: categoriaSelecionada.id,
+          p_centro_id: centroIdFinal,
+          p_titular_id: novoTitularId,
+          p_recorrencia: form.recorrencia,
+          p_dia_vencimento: dia,
+          p_mes_vencimento: mesVencimento,
+          p_valor_referencia: valorReferencia,
+          p_status_contrato: form.status_contrato,
           p_hoje: hoje,
+          p_data_vencimento_unica: umaVezSelecionada && dataUnicaPreenchida ? form.data_vencimento_unica : null,
         })
-
-        if (erroTroca) {
-          registrarErroDesenvolvimento('Erro ao trocar titular da conta:', erroTroca)
-          setErro('A conta foi salva, mas não foi possível trocar o titular. Tente novamente.')
-          return
-        }
-      } else if (!isEdicao && novoTitularId) {
-        const { error: erroPrimeiroHistorico } = await supabase.from('contas_titulares').insert({
-          conta_id:   data.id,
-          titular_id: novoTitularId,
-          inicio:     hoje,
-          fim:        null,
-          workspace_id: workspaceId,
+        if (error) throw error
+        idsLancamentosAtualizados = resultado?.lancamentos_atualizados ?? []
+      } else {
+        const agora = new Date()
+        const lancamentos = gerarLancamentosIniciais({
+          recorrencia: form.recorrencia,
+          anoBase: agora.getFullYear(),
+          mesBase: form.recorrencia === 'anual' ? mesVencimento : agora.getMonth() + 1,
+          diaBase: dia,
+          valor: valorReferencia ?? 0,
+          dataUnica: umaVezSelecionada ? form.data_vencimento_unica : undefined,
+          hoje,
         })
-
-        if (erroPrimeiroHistorico) throw erroPrimeiroHistorico
+        const { data: resultado, error } = await supabase.rpc('criar_conta_com_lancamentos', {
+          p_workspace_id: workspaceId,
+          p_requisicao_id: requisicaoIdRef.current,
+          p_nome: nome,
+          p_categoria_id: categoriaSelecionada.id,
+          p_centro_id: centroIdFinal,
+          p_titular_id: novoTitularId,
+          p_recorrencia: form.recorrencia,
+          p_dia_vencimento: dia,
+          p_mes_vencimento: mesVencimento,
+          p_valor_referencia: valorReferencia,
+          p_status_contrato: form.status_contrato,
+          p_lancamentos: lancamentos,
+        })
+        if (error) throw error
+        contaId = resultado.conta_id
       }
 
       const { data: atualizado, error: erroAtualizar } = await supabase
         .from('contas')
         .select(select)
-        .eq('id', data.id)
+        .eq('id', contaId)
         .eq('workspace_id', workspaceId)
         .single()
 
       if (erroAtualizar) throw erroAtualizar
-      onSalvo(atualizado)
+
+      let queryLancamentos = supabase
+        .from('lancamentos')
+        .select('id, conta_id, vencimento, status, data_pagamento, alterado_por, alterado_em')
+        .eq('workspace_id', workspaceId)
+
+      queryLancamentos = isEdicao
+        ? queryLancamentos.in('id', idsLancamentosAtualizados)
+        : queryLancamentos.eq('conta_id', contaId)
+
+      const { data: lancamentosAtualizados, error: erroLancamentos } = idsLancamentosAtualizados.length === 0 && isEdicao
+        ? { data: [], error: null }
+        : await queryLancamentos
+
+      if (erroLancamentos) throw erroLancamentos
+      onSalvo(atualizado, lancamentosAtualizados)
     } catch (error) {
       registrarErroDesenvolvimento('Erro ao salvar conta:', error)
-      setErro('Não foi possível salvar a conta. Confira os dados e tente novamente.')
+      if (error?.code === '23505') {
+        setErro('Já existe um lançamento da conta na nova data de vencimento.')
+      } else {
+        setErro('Não foi possível salvar a conta. Confira os dados e tente novamente.')
+      }
     } finally {
+      salvandoRef.current = false
       setSalvando(false)
     }
   }
@@ -402,20 +460,33 @@ export default function ModalFormConta({
             </div>
           </div>
 
-          {/* Dia + Mês (anual) */}
+          {/* Data única (uma vez) ou Dia + Mês (mensal/anual) */}
           <div className="flex gap-3">
-            <div className="flex-1 space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">Dia de vencimento</label>
-              <input
-                type="number"
-                min="1"
-                max="31"
-                value={form.dia_vencimento}
-                onChange={e => setForm(f => ({ ...f, dia_vencimento: e.target.value }))}
-                placeholder="Ex: 10"
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white transition"
-              />
-            </div>
+            {form.recorrencia === 'uma_vez' ? (
+              <div className="flex-1 space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Data de vencimento</label>
+                <input
+                  type="date"
+                  min={hoje}
+                  value={form.data_vencimento_unica}
+                  onChange={e => setForm(f => ({ ...f, data_vencimento_unica: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white transition"
+                />
+              </div>
+            ) : (
+              <div className="flex-1 space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700">Dia de vencimento</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={form.dia_vencimento}
+                  onChange={e => setForm(f => ({ ...f, dia_vencimento: e.target.value }))}
+                  placeholder="Ex: 10"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white transition"
+                />
+              </div>
+            )}
             {form.recorrencia === 'anual' && (
               <div className="flex-1 space-y-1.5">
                 <label className="text-xs font-semibold text-slate-700">Mês</label>

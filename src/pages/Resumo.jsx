@@ -11,6 +11,18 @@ const NOMES_MESES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ]
 
+function mesPagamento(dataPagamento) {
+  if (!dataPagamento) return -1
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dataPagamento)) {
+    return Number(dataPagamento.slice(5, 7)) - 1
+  }
+  const partes = new Intl.DateTimeFormat('pt-BR', {
+    month: 'numeric',
+    timeZone: 'America/Sao_Paulo',
+  }).formatToParts(new Date(dataPagamento))
+  return Number(partes.find(parte => parte.type === 'month')?.value ?? 0) - 1
+}
+
 // ── Detalhe expandido do mês ─────────────────────────────────
 
 function DetalheMes({ lancamentos }) {
@@ -26,7 +38,7 @@ function DetalheMes({ lancamentos }) {
   const porTitular = useMemo(() => {
     const map = new Map()
     lancamentos.forEach(l => {
-      const t = l.contas?.titulares
+      const t = l.titulares
       const nome = t?.nome ?? 'Sem titular'
       const prev = map.get(nome) ?? { total: 0, cor: t?.cor ?? null }
       map.set(nome, { total: prev.total + (l.valor ?? 0), cor: prev.cor })
@@ -118,6 +130,7 @@ export default function Resumo() {
 
   useEffect(() => {
     if (loadingWorkspace || erroWorkspace || !workspaceId) return
+    let ativo = true
 
     setLoading(true)
     setErroCarregamento('')
@@ -126,15 +139,16 @@ export default function Resumo() {
       .from('lancamentos')
       .select(`
         *,
+        titulares:titulares!lancamentos_workspace_titular_fkey(nome, cor),
         contas:contas!lancamentos_workspace_conta_fkey(nome, centro_id, titular_id,
-          centros_custo:centros_custo!contas_workspace_centro_fkey(nome),
-          titulares:titulares!contas_workspace_titular_fkey(nome, cor))
+          centros_custo:centros_custo!contas_workspace_centro_fkey(nome))
       `)
       .eq('status', 'pago')
       .eq('workspace_id', workspaceId)
-      .gte('vencimento', `${ano}-01-01`)
-      .lte('vencimento', `${ano}-12-31`)
+      .gte('data_pagamento', `${ano}-01-01`)
+      .lt('data_pagamento', `${ano + 1}-01-01`)
       .then(({ data, error }) => {
+        if (!ativo) return
         if (error) {
           if (import.meta.env.DEV) console.error('Erro ao carregar resumo:', error)
           setErroCarregamento('Não foi possível carregar o resumo. Tente novamente.')
@@ -145,6 +159,7 @@ export default function Resumo() {
         setLancamentos(data ?? [])
         setLoading(false)
       })
+    return () => { ativo = false }
   }, [ano, workspaceId, loadingWorkspace, erroWorkspace])
 
   // ── Dados derivados ──
@@ -152,7 +167,7 @@ export default function Resumo() {
   const porMes = useMemo(() =>
     Array.from({ length: 12 }, (_, i) => {
       const doMes = lancamentos.filter(
-        l => parseInt(l.vencimento.split('-')[1], 10) - 1 === i
+        l => mesPagamento(l.data_pagamento) === i
       )
       return {
         mes: i,

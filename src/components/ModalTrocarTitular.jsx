@@ -12,10 +12,14 @@ export default function ModalTrocarTitular({ centro, titulares, onClose, onSalvo
   const [selecaoOriginal, setSelecaoOriginal]         = useState({})
   const [salvando, setSalvando]                       = useState(false)
   const [erro, setErro]                               = useState('')
+  const [erroCarregamento, setErroCarregamento]       = useState('')
   const overlayRef = useRef(null)
 
   useEffect(() => {
     if (!workspaceId) return
+    let ativo = true
+    setLoading(true)
+    setErroCarregamento('')
 
     supabase
       .from('contas')
@@ -24,7 +28,14 @@ export default function ModalTrocarTitular({ centro, titulares, onClose, onSalvo
       .eq('workspace_id', workspaceId)
       .eq('status_contrato', 'ativo')
       .order('nome')
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (!ativo) return
+        if (error) {
+          if (import.meta.env.DEV) console.error('Erro ao carregar contas do imóvel:', error)
+          setErroCarregamento('Não foi possível carregar as contas deste imóvel.')
+          setLoading(false)
+          return
+        }
         const cs = data ?? []
         setContas(cs)
         const map = Object.fromEntries(cs.map(c => [c.id, c.titular_id ?? '']))
@@ -32,6 +43,7 @@ export default function ModalTrocarTitular({ centro, titulares, onClose, onSalvo
         setSelecaoOriginal(map)
         setLoading(false)
       })
+    return () => { ativo = false }
   }, [centro.id, workspaceId])
 
   function handleOverlayClick(e) {
@@ -100,6 +112,8 @@ export default function ModalTrocarTitular({ centro, titulares, onClose, onSalvo
             <div className="flex items-center justify-center py-10">
               <Loader2 size={20} className="animate-spin text-slate-300" />
             </div>
+          ) : erroCarregamento ? (
+            <p className="text-sm text-red-500 text-center py-10">{erroCarregamento}</p>
           ) : contas.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-10">
               Nenhuma conta ativa neste centro.

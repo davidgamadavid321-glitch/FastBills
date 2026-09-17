@@ -89,6 +89,9 @@ export function WorkspaceProvider({ user, children }) {
   const value = useMemo(() => ({
     workspace,
     workspaceId: workspace?.id ?? null,
+    papel: workspace?.papel ?? null,
+    podeAdministrar: workspace?.papel === 'owner' || workspace?.papel === 'admin',
+    isOwner: workspace?.papel === 'owner',
     loadingWorkspace,
     erroWorkspace,
     recarregarWorkspace: carregarWorkspace,

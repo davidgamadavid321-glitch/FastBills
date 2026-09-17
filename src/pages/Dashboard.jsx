@@ -2,7 +2,9 @@ import { useState, useEffect, useMemo } from 'react'
 import { ChevronLeft, ChevronRight, ChevronDown, AlertTriangle, Plus, Loader2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
-import { formatarMoeda as formatarValor, localISODate, normalizarDataISO } from '../lib/utils'
+import { formatarMoeda as formatarValor, localISODate, normalizarDataISO, statusEfetivo } from '../lib/utils'
+import { useHojeISO } from '../hooks/useHojeISO'
+import { notificarLancamentosAtualizados } from '../lib/lancamentos'
 import ModalCadastroConta from '../components/ModalCadastroConta'
 import ModalDetalheLancamento from '../components/ModalDetalheLancamento'
 
@@ -19,15 +21,6 @@ const NOMES_MESES = [
 function formatarData(iso = '') {
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
-}
-
-function statusEfetivo(vencimento, status, hoje) {
-  const vencimentoISO = normalizarDataISO(vencimento)
-  if (status === 'pago') return 'pago'
-  if (!vencimentoISO) return 'pendente'
-  if (status === 'vencido' || vencimentoISO < hoje) return 'vencido'
-  if (vencimentoISO === hoje) return 'hoje'
-  return 'pendente'
 }
 
 const PRIORIDADE = { vencido: 0, hoje: 1, pendente: 2, pago: 3 }
@@ -209,28 +202,32 @@ function CardLancamento({ lancamento, hoje, onClick }) {
   )
 }
 
-function PainelDia({ dia, lancamentos, ehHoje, hoje, onAdicionar, onCardClick }) {
+function PainelDia({ dia, lancamentos, ehHoje, hoje, podeAdicionar, onAdicionar, onCardClick }) {
   return (
     <>
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-900">
           {ehHoje ? 'Hoje' : `Dia ${dia}`}
         </h2>
-        <button
-          onClick={onAdicionar}
-          className="flex min-h-9 items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
-        >
-          <Plus size={13} />
-          Adicionar
-        </button>
+        {podeAdicionar && (
+          <button
+            onClick={onAdicionar}
+            className="flex min-h-9 items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+          >
+            <Plus size={13} />
+            Adicionar
+          </button>
+        )}
       </div>
 
       {lancamentos.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <p className="text-slate-400 text-sm">Nenhuma conta</p>
-          <button className="mt-1.5 text-xs text-slate-500 underline hover:text-slate-700">
-            Adicionar conta
-          </button>
+          {podeAdicionar && (
+            <button onClick={onAdicionar} className="mt-1.5 text-xs text-slate-500 underline hover:text-slate-700">
+              Adicionar conta
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-2 overflow-y-auto max-h-[60vh] sm:max-h-[62vh]">
@@ -246,7 +243,7 @@ function PainelDia({ dia, lancamentos, ehHoje, hoje, onAdicionar, onCardClick })
 // ── Componente principal ─────────────────────────────────────
 
 export default function Dashboard() {
-  const { workspaceId, loadingWorkspace, erroWorkspace } = useWorkspace()
+  const { workspaceId, podeAdministrar, loadingWorkspace, erroWorkspace } = useWorkspace()
   const [currentMonth, setCurrentMonth] = useState(() => new Date())
   const [lancamentos, setLancamentos] = useState([])
   const [loading, setLoading] = useState(true)
@@ -257,7 +254,7 @@ export default function Dashboard() {
   const [modal, setModal] = useState({ aberto: false, dia: null })
   const [detalhe, setDetalhe] = useState(null)
 
-  const hoje = useMemo(() => localISODate(new Date()), [])
+  const hoje = useHojeISO()
 
   const isCurrentMonth = useMemo(() => {
     const now = new Date()
@@ -271,6 +268,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (loadingWorkspace || erroWorkspace || !workspaceId) return
+    let ativo = true
 
     const y = currentMonth.getFullYear()
     const m = currentMonth.getMonth()
@@ -293,6 +291,21 @@ export default function Dashboard() {
     `
 
     async function carregar() {
+      const { data: competencia, error: erroCompetencia } = await supabase.rpc(
+        'garantir_competencia_recorrente',
+        { p_workspace_id: workspaceId, p_ano: y, p_mes: m + 1 }
+      )
+
+      if (!ativo) return
+      if (erroCompetencia) {
+        if (import.meta.env.DEV) console.error('Erro ao garantir competência:', erroCompetencia)
+        setErroCarregamento('Não foi possível preparar o calendário deste período. Tente novamente.')
+        setLoading(false)
+        return
+      }
+
+      if ((competencia?.inseridos ?? 0) > 0) notificarLancamentosAtualizados()
+
       const { data, error } = await supabase
         .from('lancamentos')
         .select(`*, contas:contas!lancamentos_workspace_conta_fkey(${CONTAS_SELECT})`)
@@ -301,6 +314,8 @@ export default function Dashboard() {
         .eq('workspace_id', workspaceId)
         .order('vencimento')
 
+      if (!ativo) return
+
       if (error) {
         if (import.meta.env.DEV) console.error('Erro ao carregar calendário:', error)
         setErroCarregamento('Não foi possível carregar o calendário. Tente novamente.')
@@ -308,74 +323,12 @@ export default function Dashboard() {
         return
       }
 
-      const carregados = data ?? []
-
-      // Verificar lançamentos anuais que ainda não foram gerados para este ano/mês
-      const { data: contasAnuais } = await supabase
-        .from('contas')
-        .select('id, dia_vencimento, mes_vencimento, valor_referencia')
-        .eq('recorrencia', 'anual')
-        .eq('mes_vencimento', m + 1)
-        .eq('status_contrato', 'ativo')
-        .eq('workspace_id', workspaceId)
-
-      if (contasAnuais?.length) {
-        const jaExistem = new Set(carregados.map(l => l.conta_id))
-        const faltando  = contasAnuais.filter(c => !jaExistem.has(c.id))
-
-        if (faltando.length) {
-          const agora = new Date()
-          agora.setHours(0, 0, 0, 0)
-          const anoAtual = agora.getFullYear()
-
-          // Só criar se ano visualizado é o atual (permite vencido) ou data futura
-          const payload = faltando.reduce((acc, c) => {
-            const d = new Date(y, m, c.dia_vencimento)
-            d.setHours(0, 0, 0, 0)
-            if (y === anoAtual || d >= agora) {
-              const vencimento = localISODate(d)
-              acc.push({
-                conta_id:   c.id,
-                valor:      c.valor_referencia ?? 0,
-                vencimento,
-                status:     d < agora ? 'vencido' : 'pendente',
-                workspace_id: workspaceId,
-              })
-            }
-            return acc
-          }, [])
-
-          if (!payload.length) { setLancamentos(carregados); setLoading(false); return }
-
-          try {
-            await Promise.all(payload.map(async (novoLancamento) => {
-              const { error: erroInsert } = await supabase
-                .from('lancamentos')
-                .insert(novoLancamento)
-
-              if (erroInsert && erroInsert.code !== '23505') throw erroInsert
-            }))
-          } catch {
-            setLancamentos(carregados)
-            setLoading(false)
-            return
-          }
-        }
-      }
-
-      const { data: atualizados, error: erroAtualizar } = await supabase
-        .from('lancamentos')
-        .select(`*, contas:contas!lancamentos_workspace_conta_fkey(${CONTAS_SELECT})`)
-        .gte('vencimento', inicio)
-        .lte('vencimento', fim)
-        .eq('workspace_id', workspaceId)
-        .order('vencimento')
-
-      setLancamentos(erroAtualizar ? carregados : (atualizados ?? []))
+      setLancamentos(data ?? [])
       setLoading(false)
     }
 
     carregar()
+    return () => { ativo = false }
   }, [currentMonth, workspaceId, loadingWorkspace, erroWorkspace])
 
   const titulares = useMemo(() => {
@@ -423,7 +376,7 @@ export default function Dashboard() {
   const diaSelecionadoEhHoje = selectedDay === hojeNum
 
   function handleDiaClick(dia, temContas) {
-    if (temContas) {
+    if (temContas || !podeAdministrar) {
       setSelectedDay(d => (d === dia ? null : dia))
     } else {
       setModal({ aberto: true, dia })
@@ -464,6 +417,7 @@ export default function Dashboard() {
       setLancamentos(prev => [...prev, ...doMesAtual])
     }
 
+    notificarLancamentosAtualizados()
     fecharModal()
   }
               
@@ -637,6 +591,7 @@ export default function Dashboard() {
               lancamentos={diaSelecionadoLancamentos}
               ehHoje={diaSelecionadoEhHoje}
               hoje={hoje}
+              podeAdicionar={podeAdministrar}
               onAdicionar={() => abrirModalParaDia(selectedDay)}
               onCardClick={setDetalhe}
             />
@@ -652,6 +607,7 @@ export default function Dashboard() {
             lancamentos={diaSelecionadoLancamentos}
             ehHoje={diaSelecionadoEhHoje}
             hoje={hoje}
+            podeAdicionar={podeAdministrar}
             onAdicionar={() => abrirModalParaDia(selectedDay)}
             onCardClick={setDetalhe}
           />
@@ -659,7 +615,7 @@ export default function Dashboard() {
       )}
 
       {/* Modal de cadastro */}
-      {modal.aberto && (
+      {podeAdministrar && modal.aberto && (
         <ModalCadastroConta
           dia={modal.dia}
           currentMonth={currentMonth}

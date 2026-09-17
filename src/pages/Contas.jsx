@@ -4,7 +4,9 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import * as LucideIcons from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
-import { formatarMoeda as formatarValor, localISODate, normalizarDataISO } from '../lib/utils'
+import { dataVencimentoNoMes, formatarMoeda as formatarValor, localISODate, normalizarDataISO } from '../lib/utils'
+import { useHojeISO } from '../hooks/useHojeISO'
+import { notificarLancamentosAtualizados } from '../lib/lancamentos'
 import ModalFormConta from '../components/ModalFormConta'
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -119,7 +121,7 @@ function dataVencimentoReferencia(conta, hojeISO) {
     : mesAtual
 
   if (!Number.isInteger(mesReferencia) || mesReferencia < 1 || mesReferencia > 12) return ''
-  return localISODate(new Date(anoAtual, mesReferencia - 1, dia))
+  return dataVencimentoNoMes(anoAtual, mesReferencia, dia)
 }
 
 function chaveLancamento(contaId, vencimento) {
@@ -220,6 +222,7 @@ function CardConta({
   onExcluir,
   onVerLancamentos,
   grupo,
+  podeAdministrar,
 }) {
   const [menuAberto, setMenuAberto] = useState(false)
   const menuRef = useRef(null)
@@ -240,8 +243,17 @@ function CardConta({
 
   const vencimentoLabel = (() => {
     if (conta.__lancamentoPago?.vencimentoISO) {
-      const [ano, mes, dia] = conta.__lancamentoPago.vencimentoISO.split('-')
-      return `Pago em ${dia}/${mes}/${ano}`
+      const dataPagamento = normalizarDataISO(conta.__lancamentoPago.data_pagamento)
+      const dataExibida = dataPagamento || conta.__lancamentoPago.vencimentoISO
+      const [ano, mes, dia] = dataExibida.split('-')
+      return dataPagamento
+        ? `Pago em ${dia}/${mes}/${ano}`
+        : `Venceu em ${dia}/${mes}/${ano}`
+    }
+
+    if (conta.__lancamentoAcao?.vencimentoISO) {
+      const [ano, mes, dia] = conta.__lancamentoAcao.vencimentoISO.split('-')
+      return `Vence em ${dia}/${mes}/${ano}`
     }
 
     if (!conta.dia_vencimento) return null
@@ -323,10 +335,10 @@ function CardConta({
               </button>
               {menuAberto && (
                 <div className="absolute right-0 top-9 bg-white border border-slate-200 rounded-xl shadow-xl shadow-slate-900/10 py-1.5 w-44 z-20">
-                  <MenuBtn label="Editar" onClick={() => { onEditar(); setMenuAberto(false) }} />
+                  {podeAdministrar && <MenuBtn label="Editar" onClick={() => { onEditar(); setMenuAberto(false) }} />}
                   <MenuBtn label="Ver lançamentos" onClick={() => { onVerLancamentos(); setMenuAberto(false) }} />
-                  <div className="h-px bg-slate-100 my-1" />
-                  <MenuBtn label="Excluir" onClick={() => { onExcluir(); setMenuAberto(false) }} danger />
+                  {podeAdministrar && <div className="h-px bg-slate-100 my-1" />}
+                  {podeAdministrar && <MenuBtn label="Excluir" onClick={() => { onExcluir(); setMenuAberto(false) }} danger />}
                 </div>
               )}
             </div>
@@ -398,6 +410,7 @@ function SecaoGrupoContas({
   onEditar,
   onExcluir,
   onVerLancamentos,
+  podeAdministrar,
 }) {
   if (contas.length === 0) return null
 
@@ -442,6 +455,7 @@ function SecaoGrupoContas({
             onExcluir={() => onExcluir(conta)}
             onVerLancamentos={() => onVerLancamentos(conta)}
             grupo={grupo}
+            podeAdministrar={podeAdministrar}
           />
         ))}
       </div>
@@ -472,7 +486,7 @@ function SecaoGrupoContas({
 // ── Página principal ─────────────────────────────────────────
 
 export default function Contas() {
-  const { workspaceId, loadingWorkspace, erroWorkspace } = useWorkspace()
+  const { workspaceId, podeAdministrar, loadingWorkspace, erroWorkspace } = useWorkspace()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -482,6 +496,8 @@ export default function Contas() {
   const [categorias, setCategorias]     = useState([])
   const [lancamentos, setLancamentos]   = useState([])
   const [loading, setLoading]           = useState(true)
+  const [erroCarregamento, setErroCarregamento] = useState('')
+  const fetchRequestRef = useRef(0)
 
   // Filtros — pré-preenche centro se vindo de Imóveis
   const [busca,             setBusca]             = useState('')
@@ -509,14 +525,10 @@ export default function Contas() {
   const fetchData = useCallback(async () => {
     if (loadingWorkspace || erroWorkspace || !workspaceId) return
 
+    const requestId = ++fetchRequestRef.current
     setLoading(true)
-    const [
-      { data: cs },
-      { data: ts },
-      { data: ccs },
-      { data: cats },
-      { data: lancs },
-    ] = await Promise.all([
+    setErroCarregamento('')
+    const resultados = await Promise.all([
       supabase.from('contas').select(`
         *,
         centros_custo:centros_custo!contas_workspace_centro_fkey(nome, tipo),
@@ -535,6 +547,17 @@ export default function Contas() {
         .select('id, conta_id, vencimento, status, data_pagamento, alterado_por, alterado_em')
         .eq('workspace_id', workspaceId),
     ])
+    if (requestId !== fetchRequestRef.current) return
+
+    const erro = resultados.find(resultado => resultado.error)?.error
+    if (erro) {
+      registrarErroDesenvolvimento('Erro ao carregar contas:', erro)
+      setErroCarregamento('Não foi possível carregar as contas. Tente novamente.')
+      setLoading(false)
+      return
+    }
+
+    const [cs, ts, ccs, cats, lancs] = resultados.map(resultado => resultado.data)
     setContas(cs ?? [])
     setTitulares(ts ?? [])
     setCentrosCusto(ccs ?? [])
@@ -543,7 +566,10 @@ export default function Contas() {
     setLoading(false)
   }, [workspaceId, loadingWorkspace, erroWorkspace])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => {
+    fetchData()
+    return () => { fetchRequestRef.current += 1 }
+  }, [fetchData])
 
   // Filtros em tempo real
   const contasFiltradas = useMemo(() => {
@@ -577,7 +603,7 @@ export default function Contas() {
     })
   }, [contas, busca, filtroTitular, filtroCentro, filtroCategoria, filtroRecorrencia, filtroStatus])
 
-  const hojeISO = useMemo(() => localISODate(new Date()), [])
+  const hojeISO = useHojeISO()
 
   const lancamentosPorContaVencimento = useMemo(() => {
     const map = new Map()
@@ -722,7 +748,7 @@ export default function Contas() {
     setFiltroRecorrencia(FILTRO_TODOS)
   }
 
-  function handleContaSalva(data) {
+  function handleContaSalva(data, lancamentosAtualizados = []) {
     setContas(prev => {
       const existe = prev.find(c => c.id === data.id)
       const lista = existe
@@ -730,30 +756,29 @@ export default function Contas() {
         : [...prev, data]
       return lista.sort((a, b) => a.nome.localeCompare(b.nome))
     })
+    if (lancamentosAtualizados.length > 0) {
+      const porId = new Map(lancamentosAtualizados.map(lancamento => [lancamento.id, lancamento]))
+      setLancamentos(prev => {
+        const existentes = new Set(prev.map(lancamento => lancamento.id))
+        const atualizados = prev.map(lancamento => porId.get(lancamento.id) ?? lancamento)
+        const novos = lancamentosAtualizados.filter(lancamento => !existentes.has(lancamento.id))
+        return [...atualizados, ...novos]
+      })
+      notificarLancamentosAtualizados()
+    }
     setModalCadastro(false)
     setModalEdicao(null)
   }
 
   async function excluirContaPorId(contaId) {
     const hoje = localISODate(new Date())
+    const { error } = await supabase.rpc('excluir_conta_com_lancamentos_futuros', {
+      p_workspace_id: workspaceId,
+      p_conta_id: contaId,
+      p_hoje: hoje,
+    })
 
-    const { error: erroLanc } = await supabase
-      .from('lancamentos')
-      .delete()
-      .eq('conta_id', contaId)
-      .eq('workspace_id', workspaceId)
-      .neq('status', 'pago')
-      .gte('vencimento', hoje)
-
-    if (erroLanc) throw erroLanc
-
-    const { error: erroConta } = await supabase
-      .from('contas')
-      .delete()
-      .eq('id', contaId)
-      .eq('workspace_id', workspaceId)
-
-    if (erroConta) throw erroConta
+    if (error) throw error
   }
 
   async function handleExcluir() {
@@ -767,7 +792,9 @@ export default function Contas() {
       setConfirmExcluir(null)
     } catch (error) {
       registrarErroDesenvolvimento('Erro ao excluir conta:', error)
-      setErroExcluir('Erro ao excluir conta. Tente novamente.')
+      setErroExcluir(error?.code === '23503'
+        ? 'Esta conta possui histórico ou pagamentos e não pode ser excluída.'
+        : 'Erro ao excluir conta. Tente novamente.')
     } finally {
       setExcluindo(false)
     }
@@ -865,6 +892,17 @@ export default function Contas() {
     setErroExclusaoLote('')
     setFeedbackLote(null)
 
+    const camposLancamento = 'id, conta_id, vencimento, status, data_pagamento, alterado_por, alterado_em'
+    const diagnostico = {
+      idsEnviados: [...ids],
+      idsVisiveisAntes: [],
+      idsAusentesAntes: [],
+      idsRetornadosUpdate: [],
+      idsPersistidos: [],
+      idsNaoRetornados: [],
+      idsNaoPersistidos: [],
+    }
+
     try {
       const { data: { user } } = await supabase.auth.getUser()
       const agoraISO = new Date().toISOString()
@@ -884,29 +922,87 @@ export default function Contas() {
           alterado_em: agoraISO,
         }
 
+      const { data: existentes, error: erroExistentes } = await supabase
+        .from('lancamentos')
+        .select('id')
+        .eq('workspace_id', workspaceId)
+        .in('id', ids)
+
+      if (erroExistentes) throw erroExistentes
+      diagnostico.idsVisiveisAntes = (existentes ?? []).map(lancamento => lancamento.id)
+
+      const idsVisiveis = new Set(diagnostico.idsVisiveisAntes)
+      const idsAusentes = ids.filter(id => !idsVisiveis.has(id))
+      diagnostico.idsAusentesAntes = idsAusentes
+      if (idsAusentes.length > 0) {
+        const erroIds = new Error('Há lançamentos selecionados que não existem mais ou não estão visíveis para este usuário.')
+        erroIds.code = 'IDS_NAO_VISIVEIS'
+        erroIds.ids = idsAusentes
+        throw erroIds
+      }
+
       const { data, error } = await supabase
         .from('lancamentos')
         .update(payload)
         .eq('workspace_id', workspaceId)
         .in('id', ids)
-        .select('id, conta_id, vencimento, status, data_pagamento, alterado_por, alterado_em')
+        .select(camposLancamento)
 
       if (error) throw error
+      diagnostico.idsRetornadosUpdate = (data ?? []).map(lancamento => lancamento.id)
 
-      const atualizados = new Map((data ?? []).map(lancamento => [lancamento.id, lancamento]))
+      const { data: confirmados, error: erroConfirmacao } = await supabase
+        .from('lancamentos')
+        .select(camposLancamento)
+        .eq('workspace_id', workspaceId)
+        .in('id', ids)
+
+      if (erroConfirmacao) throw erroConfirmacao
+
+      const persistidos = (confirmados ?? []).filter(lancamento => (
+        lancamento.status === novoStatus
+        && new Date(lancamento.alterado_em).getTime() === new Date(agoraISO).getTime()
+      ))
+      diagnostico.idsPersistidos = persistidos.map(lancamento => lancamento.id)
+
+      const retornados = new Set(diagnostico.idsRetornadosUpdate)
+      const confirmadosPorId = new Map((confirmados ?? []).map(lancamento => [lancamento.id, lancamento]))
+      const idsNaoRetornados = ids.filter(id => !retornados.has(id))
+      const idsNaoPersistidos = ids.filter(id => !diagnostico.idsPersistidos.includes(id))
+      diagnostico.idsNaoRetornados = idsNaoRetornados
+      diagnostico.idsNaoPersistidos = idsNaoPersistidos
+
+      if (import.meta.env.DEV) {
+        console.info('Diagnóstico da atualização de status em lote:', diagnostico)
+      }
+
       setLancamentos(prev => prev.map(lancamento => (
-        atualizados.get(lancamento.id) ?? lancamento
+        confirmadosPorId.get(lancamento.id) ?? lancamento
       )))
+
+      if (idsNaoRetornados.length > 0 || idsNaoPersistidos.length > 0) {
+        const erroDivergencia = new Error('O banco não confirmou todos os lançamentos atualizados.')
+        erroDivergencia.code = 'ATUALIZACAO_PARCIAL'
+        erroDivergencia.idsNaoRetornados = idsNaoRetornados
+        erroDivergencia.idsNaoPersistidos = idsNaoPersistidos
+        throw erroDivergencia
+      }
+
+      notificarLancamentosAtualizados()
       setContasSelecionadas(new Set())
       setFeedbackLote({
         tipo: 'sucesso',
-        texto: `${ids.length} ${ids.length === 1 ? 'conta atualizada' : 'contas atualizadas'} com sucesso.`,
+        texto: `${ids.length} ${ids.length === 1 ? 'lançamento atualizado' : 'lançamentos atualizados'} com sucesso.`,
       })
     } catch (error) {
-      registrarErroDesenvolvimento('Erro ao atualizar contas selecionadas:', error)
+      registrarErroDesenvolvimento('Erro ao atualizar lançamentos selecionados:', { error, diagnostico })
       setFeedbackLote({
         tipo: 'erro',
-        texto: 'Não foi possível atualizar as contas selecionadas. Tente novamente.',
+        texto: error?.code === 'IDS_NAO_VISIVEIS'
+          ? 'A seleção contém lançamentos que não existem mais ou não estão acessíveis. Recarregue a página.'
+          : error?.code === 'ATUALIZACAO_PARCIAL'
+            ? 'Nem todos os lançamentos foram confirmados no banco. A seleção foi mantida para revisão.'
+            : 'Não foi possível atualizar os lançamentos selecionados. Tente novamente.',
       })
     } finally {
       setAtualizandoSelecionadas(false)
@@ -917,6 +1013,10 @@ export default function Contas() {
 
   if (erroWorkspace) {
     return <p className="text-sm text-red-500">{erroWorkspace}</p>
+  }
+
+  if (erroCarregamento) {
+    return <p className="text-sm text-red-500">{erroCarregamento}</p>
   }
 
   if (loadingWorkspace || loading) {
@@ -954,13 +1054,15 @@ export default function Contas() {
               </span>
             </p>
           </div>
-          <button
-            onClick={() => setModalCadastro(true)}
-            className="flex items-center gap-1.5 bg-slate-900 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors shadow-sm shadow-slate-300"
-          >
-            <Plus size={14} />
-            Nova conta
-          </button>
+          {podeAdministrar && (
+            <button
+              onClick={() => setModalCadastro(true)}
+              className="flex items-center gap-1.5 bg-slate-900 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors shadow-sm shadow-slate-300"
+            >
+              <Plus size={14} />
+              Nova conta
+            </button>
+          )}
         </div>
       </div>
 
@@ -1151,7 +1253,7 @@ export default function Contas() {
                   {atualizandoSelecionadas ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
                   {atualizandoSelecionadas ? 'Atualizando...' : 'Marcar como pendente'}
                 </button>
-                <button
+                {podeAdministrar && <button
                   onClick={excluirSelecionadas}
                   disabled={excluindoSelecionadas || atualizandoSelecionadas}
                   className="inline-flex min-h-10 items-center justify-center gap-1.5 px-3 py-2 border border-red-400/40 bg-red-500/15 text-red-100 rounded-lg text-xs font-semibold hover:bg-red-500/25 disabled:opacity-50 transition-colors"
@@ -1160,7 +1262,7 @@ export default function Contas() {
                     ? <Loader2 size={13} className="animate-spin" />
                     : <Trash2 size={13} />}
                   {excluindoSelecionadas ? 'Excluindo...' : 'Excluir'}
-                </button>
+                </button>}
               </div>
             )}
 
@@ -1199,13 +1301,15 @@ export default function Contas() {
                 Crie sua primeira conta para acompanhar vencimentos, pagamentos e comprovantes.
               </p>
             </div>
-            <button
-              onClick={() => setModalCadastro(true)}
-              className="flex items-center gap-1.5 bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors"
-            >
-              <Plus size={14} />
-              Nova conta
-            </button>
+            {podeAdministrar && (
+              <button
+                onClick={() => setModalCadastro(true)}
+                className="flex items-center gap-1.5 bg-slate-900 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors"
+              >
+                <Plus size={14} />
+                Nova conta
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-white py-16 px-4 text-center shadow-sm shadow-slate-200/60">
@@ -1242,13 +1346,14 @@ export default function Contas() {
               onEditar={setModalEdicao}
               onExcluir={(conta) => { setErroExcluir(''); setConfirmExcluir(conta) }}
               onVerLancamentos={(conta) => navigate('/', { state: { contaId: conta.id } })}
+              podeAdministrar={podeAdministrar}
             />
           ))}
         </div>
       )}
 
       {/* Modal confirmação de exclusão */}
-      {confirmExcluir && (
+      {podeAdministrar && confirmExcluir && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40">
           <div className="w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-3xl p-6 space-y-4">
             <div>
@@ -1282,7 +1387,7 @@ export default function Contas() {
       )}
 
       {/* Modal de cadastro */}
-      {modalCadastro && (
+      {podeAdministrar && modalCadastro && (
         <ModalFormConta
           conta={null}
           centroIdInicial={filtroCentro !== FILTRO_TODOS && filtroCentro !== FILTRO_GERAL ? filtroCentro : ''}
@@ -1295,7 +1400,7 @@ export default function Contas() {
       )}
 
       {/* Modal de edição */}
-      {modalEdicao && (
+      {podeAdministrar && modalEdicao && (
         <ModalFormConta
           conta={modalEdicao}
           centrosCusto={centrosCusto}

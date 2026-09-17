@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Bell, Clock, FileText, Loader2, Plus, X, User, Tag, Send, ExternalLink,
   Droplets, Zap, Flame, Wifi, Shield, Home, CreditCard,
@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase'
 import { enviarAvisosVencimento, MENSAGEM_ERRO_ENVIO_TELEGRAM } from '../lib/telegram'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { formatarMoeda as formatarValor, localISODate } from '../lib/utils'
+import { useHojeISO } from '../hooks/useHojeISO'
 
 // ── Constantes ────────────────────────────────────────────────
 
@@ -127,25 +128,14 @@ const STATUS_LABEL = {
 
 async function upsertConfig(chave, valor, workspaceId) {
   const atualizadoEm = new Date().toISOString()
-  const { data: atualizado, error: erroUpdate } = await supabase
+  const { error } = await supabase
     .from('configuracoes')
-    .update({ valor, atualizado_em: atualizadoEm })
-    .eq('chave', chave)
-    .eq('workspace_id', workspaceId)
-    .select('chave')
-    .maybeSingle()
+    .upsert(
+      { chave, valor, workspace_id: workspaceId, atualizado_em: atualizadoEm },
+      { onConflict: 'workspace_id,chave' },
+    )
 
-  if (erroUpdate) throw erroUpdate
-
-  if (atualizado) {
-    return
-  }
-
-  const { error: erroInsert } = await supabase
-    .from('configuracoes')
-    .insert({ chave, valor, workspace_id: workspaceId, atualizado_em: atualizadoEm })
-
-  if (erroInsert) throw erroInsert
+  if (error) throw error
 }
 
 // ── Seção Cabeçalho ───────────────────────────────────────────
@@ -174,6 +164,7 @@ function SecaoTitulares({ titulares, setTitulares }) {
   const [salvando,    setSalvando]    = useState(false)
   const [erroRemover, setErroRemover] = useState('')
   const [erroAdicionar, setErroAdicionar] = useState('')
+  const [removendoId, setRemovendoId] = useState(null)
 
   async function handleAdicionar() {
     const nomeAparado = nome.trim()
@@ -235,17 +226,37 @@ function SecaoTitulares({ titulares, setTitulares }) {
 
   async function handleRemover(id) {
     setErroRemover('')
-    const { count } = await supabase
-      .from('contas')
-      .select('id', { count: 'exact', head: true })
-      .eq('titular_id', id)
-      .eq('workspace_id', workspaceId)
-    if ((count ?? 0) > 0) {
-      setErroRemover('Este titular possui contas vinculadas e não pode ser removido.')
-      return
+    setRemovendoId(id)
+    try {
+      const { count, error: erroVinculos } = await supabase
+        .from('contas')
+        .select('id', { count: 'exact', head: true })
+        .eq('titular_id', id)
+        .eq('workspace_id', workspaceId)
+      if (erroVinculos) throw erroVinculos
+      if ((count ?? 0) > 0) {
+        setErroRemover('Este titular possui contas vinculadas e não pode ser removido.')
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('titulares')
+        .delete()
+        .eq('id', id)
+        .eq('workspace_id', workspaceId)
+        .select('id')
+        .single()
+      if (error) throw error
+      if (data?.id !== id) throw new Error('Exclusão não confirmada pelo banco.')
+      setTitulares(prev => prev.filter(t => t.id !== id))
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('Erro ao remover titular:', error)
+      setErroRemover(error?.code === '23503'
+        ? 'Este titular possui vínculos ou histórico e não pode ser removido.'
+        : 'Não foi possível remover o titular. Tente novamente.')
+    } finally {
+      setRemovendoId(null)
     }
-    await supabase.from('titulares').delete().eq('id', id).eq('workspace_id', workspaceId)
-    setTitulares(prev => prev.filter(t => t.id !== id))
   }
 
   return (
@@ -279,9 +290,12 @@ function SecaoTitulares({ titulares, setTitulares }) {
               </div>
               <button
                 onClick={() => handleRemover(t.id)}
+                disabled={removendoId === t.id}
                 className="p-1 rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors shrink-0"
               >
-                <X size={14} className="text-slate-400" />
+                {removendoId === t.id
+                  ? <Loader2 size={14} className="animate-spin text-slate-400" />
+                  : <X size={14} className="text-slate-400" />}
               </button>
             </div>
           ))}
@@ -356,17 +370,24 @@ function SecaoCategorias({ categorias, setCategorias }) {
   const [icone,       setIcone]       = useState(ICONE_KEYS[0])
   const [salvando,    setSalvando]    = useState(false)
   const [erroRemover, setErroRemover] = useState('')
+  const [erroAdicionar, setErroAdicionar] = useState('')
+  const [removendoId, setRemovendoId] = useState(null)
 
   async function handleAdicionar() {
     if (!nome.trim()) return
     setSalvando(true)
+    setErroAdicionar('')
     const { data, error } = await supabase
       .from('categorias')
       .insert({ nome: nome.trim(), icone, workspace_id: workspaceId })
       .select()
       .single()
     setSalvando(false)
-    if (error) return
+    if (error) {
+      if (import.meta.env.DEV) console.error('Erro ao criar categoria:', error)
+      setErroAdicionar('Não foi possível criar a categoria. Tente novamente.')
+      return
+    }
     setCategorias(prev => [...prev, data].sort((a, b) => a.nome.localeCompare(b.nome)))
     setNome('')
     setIcone(ICONE_KEYS[0])
@@ -375,17 +396,37 @@ function SecaoCategorias({ categorias, setCategorias }) {
 
   async function handleRemover(id) {
     setErroRemover('')
-    const { count } = await supabase
-      .from('contas')
-      .select('id', { count: 'exact', head: true })
-      .eq('categoria_id', id)
-      .eq('workspace_id', workspaceId)
-    if ((count ?? 0) > 0) {
-      setErroRemover('Esta categoria possui contas vinculadas e não pode ser removida.')
-      return
+    setRemovendoId(id)
+    try {
+      const { count, error: erroVinculos } = await supabase
+        .from('contas')
+        .select('id', { count: 'exact', head: true })
+        .eq('categoria_id', id)
+        .eq('workspace_id', workspaceId)
+      if (erroVinculos) throw erroVinculos
+      if ((count ?? 0) > 0) {
+        setErroRemover('Esta categoria possui contas vinculadas e não pode ser removida.')
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('categorias')
+        .delete()
+        .eq('id', id)
+        .eq('workspace_id', workspaceId)
+        .select('id')
+        .single()
+      if (error) throw error
+      if (data?.id !== id) throw new Error('Exclusão não confirmada pelo banco.')
+      setCategorias(prev => prev.filter(c => c.id !== id))
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('Erro ao remover categoria:', error)
+      setErroRemover(error?.code === '23503'
+        ? 'Esta categoria possui vínculos e não pode ser removida.'
+        : 'Não foi possível remover a categoria. Tente novamente.')
+    } finally {
+      setRemovendoId(null)
     }
-    await supabase.from('categorias').delete().eq('id', id).eq('workspace_id', workspaceId)
-    setCategorias(prev => prev.filter(c => c.id !== id))
   }
 
   return (
@@ -410,9 +451,12 @@ function SecaoCategorias({ categorias, setCategorias }) {
               </span>
               <button
                 onClick={() => handleRemover(cat.id)}
+                disabled={removendoId === cat.id}
                 className="absolute top-1.5 right-1.5 p-0.5 rounded hover:bg-slate-100 transition-colors"
               >
-                <X size={11} className="text-slate-300 hover:text-slate-500 transition-colors" />
+                {removendoId === cat.id
+                  ? <Loader2 size={11} className="animate-spin text-slate-400" />
+                  : <X size={11} className="text-slate-300 hover:text-slate-500 transition-colors" />}
               </button>
             </div>
           )
@@ -464,6 +508,7 @@ function SecaoCategorias({ categorias, setCategorias }) {
                 {salvando ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
+            {erroAdicionar && <p className="text-xs text-red-500">{erroAdicionar}</p>}
           </div>
         ) : (
           <button
@@ -493,6 +538,8 @@ function SecaoTelegram() {
   const [gerandoCodigo, setGerandoCodigo] = useState(false)
   const [codigoConexao, setCodigoConexao] = useState(null)
   const [erroCodigo,    setErroCodigo]    = useState('')
+  const [erroChats,     setErroChats]     = useState('')
+  const envioIdRef = useRef(crypto.randomUUID())
 
   const chatsValidos = useMemo(
     () => chats.filter(chat => chat && (typeof chat.chat_id === 'string' || typeof chat.chat_id === 'number')),
@@ -508,28 +555,42 @@ function SecaoTelegram() {
     : ''
 
   useEffect(() => {
-    function buscarChats() {
+    let ativo = true
+    let buscando = false
+
+    async function buscarChats() {
       if (!workspaceId) {
         setChats([])
         setLoadingChats(false)
         return
       }
+      if (buscando) return
+      buscando = true
 
-      supabase
+      const { data, error } = await supabase
         .from('configuracoes')
         .select('valor')
         .eq('chave', 'telegram_chats')
         .eq('workspace_id', workspaceId)
         .maybeSingle()
-        .then(({ data }) => {
-          try { setChats(JSON.parse(data?.valor || '[]')) } catch { setChats([]) }
-          setLoadingChats(false)
-        })
+      buscando = false
+      if (!ativo) return
+      if (error) {
+        setErroChats('Não foi possível carregar os chats autorizados.')
+        setLoadingChats(false)
+        return
+      }
+      try { setChats(JSON.parse(data?.valor || '[]')) } catch { setChats([]) }
+      setErroChats('')
+      setLoadingChats(false)
     }
 
     buscarChats()
     const intervalo = setInterval(buscarChats, 10000)
-    return () => clearInterval(intervalo)
+    return () => {
+      ativo = false
+      clearInterval(intervalo)
+    }
   }, [workspaceId])
 
   async function handleGerarCodigo() {
@@ -566,17 +627,24 @@ function SecaoTelegram() {
 
   async function handleRemover(chatId) {
     setRemovendo(chatId)
-    const nova = chats.filter(c => c.chat_id !== chatId)
-    await upsertConfig('telegram_chats', JSON.stringify(nova), workspaceId)
-    setChats(nova)
-    setRemovendo(null)
+    setErroChats('')
+    try {
+      const nova = chats.filter(c => c.chat_id !== chatId)
+      await upsertConfig('telegram_chats', JSON.stringify(nova), workspaceId)
+      setChats(nova)
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('Erro ao remover chat do Telegram:', error)
+      setErroChats('Não foi possível remover o chat. Tente novamente.')
+    } finally {
+      setRemovendo(null)
+    }
   }
 
   async function handleEnviarAgora() {
     setEnviando(true)
     setFeedbackEnvio(null)
     try {
-      const resultado = await enviarAvisosVencimento(supabase, 'manha')
+      const resultado = await enviarAvisosVencimento(supabase, 'manha', envioIdRef.current)
       const total = resultado?.envios ?? 0
       setFeedbackEnvio({
         ok: true,
@@ -584,6 +652,7 @@ function SecaoTelegram() {
           ? 'Nenhum chat cadastrado para receber avisos.'
           : 'Avisos enviados com sucesso.'),
       })
+      envioIdRef.current = crypto.randomUUID()
     } catch (e) {
       if (import.meta.env.DEV) {
         console.error('Erro ao enviar avisos pelo Telegram:', e)
@@ -720,6 +789,8 @@ function SecaoTelegram() {
           Nenhum chat autorizado ainda.
         </p>
       )}
+
+      {erroChats && <p className="text-xs text-red-500">{erroChats}</p>}
 
       <div className="pt-4 border-t border-slate-100 space-y-2">
         <button
@@ -957,7 +1028,7 @@ function montarGrupoPrevia({ titulo, lancamentos, criarDescricao, restante }) {
 }
 
 function SecaoPreviaAviso({ lancamentos, loading }) {
-  const hoje = useMemo(() => localISODate(new Date()), [])
+  const hoje = useHojeISO()
 
   const { grupos, total, ocultos } = useMemo(() => {
     const vencidas = lancamentos.filter(l => l.vencimento < hoje)
@@ -1052,7 +1123,7 @@ function SecaoPreviaAviso({ lancamentos, loading }) {
 // ── Página principal ──────────────────────────────────────────
 
 export default function Avisos() {
-  const { workspaceId, loadingWorkspace, erroWorkspace } = useWorkspace()
+  const { workspaceId, podeAdministrar, loadingWorkspace, erroWorkspace } = useWorkspace()
   const [loadingCfg,        setLoadingCfg]        = useState(true)
   const [prazo,             setPrazo]              = useState(3)
   const [alertasConfig,     setAlertasConfig]      = useState(() => criarConfigAlertasPadrao(3))
@@ -1071,11 +1142,16 @@ export default function Avisos() {
   const [loadingContas,     setLoadingContas]      = useState(true)
   const [lancamentosPrevia, setLancamentosPrevia]  = useState([])
   const [loadingPrevia,     setLoadingPrevia]      = useState(true)
+  const [erroCarregamento,  setErroCarregamento]   = useState('')
 
   useEffect(() => {
     if (loadingWorkspace || erroWorkspace || !workspaceId) return
+    let ativo = true
 
     setLoadingCfg(true)
+    setLoadingHistorico(true)
+    setLoadingContas(true)
+    setErroCarregamento('')
 
     // Configurações
     supabase
@@ -1084,6 +1160,7 @@ export default function Avisos() {
       .eq('workspace_id', workspaceId)
       .in('chave', ['prazo_alerta_dias', 'telegram_alertas_config'])
       .then(({ data, error }) => {
+        if (!ativo) return
         if (error) {
           if (import.meta.env.DEV) {
             console.error('Erro ao carregar configuração de alertas:', {
@@ -1117,7 +1194,11 @@ export default function Avisos() {
       .select('id, nome, cor')
       .eq('workspace_id', workspaceId)
       .order('nome')
-      .then(({ data }) => setTitulares(data ?? []))
+      .then(({ data, error }) => {
+        if (!ativo) return
+        if (error) setErroCarregamento('Não foi possível carregar todos os dados de avisos.')
+        else setTitulares(data ?? [])
+      })
 
     // Categorias
     supabase
@@ -1125,7 +1206,11 @@ export default function Avisos() {
       .select('id, nome, icone')
       .eq('workspace_id', workspaceId)
       .order('nome')
-      .then(({ data }) => setCategorias(data ?? []))
+      .then(({ data, error }) => {
+        if (!ativo) return
+        if (error) setErroCarregamento('Não foi possível carregar todos os dados de avisos.')
+        else setCategorias(data ?? [])
+      })
 
     // Histórico de alterações
     supabase
@@ -1141,8 +1226,10 @@ export default function Avisos() {
       .eq('workspace_id', workspaceId)
       .order('alterado_em', { ascending: false })
       .limit(20)
-      .then(({ data }) => {
-        setHistorico(data ?? [])
+      .then(({ data, error }) => {
+        if (!ativo) return
+        if (error) setErroCarregamento('Não foi possível carregar todos os dados de avisos.')
+        else setHistorico(data ?? [])
         setLoadingHistorico(false)
       })
 
@@ -1161,14 +1248,18 @@ export default function Avisos() {
       .eq('status_contrato', 'a_fazer')
       .eq('workspace_id', workspaceId)
       .order('nome')
-      .then(({ data }) => {
-        setContasAFazer(data ?? [])
+      .then(({ data, error }) => {
+        if (!ativo) return
+        if (error) setErroCarregamento('Não foi possível carregar todos os dados de avisos.')
+        else setContasAFazer(data ?? [])
         setLoadingContas(false)
       })
+    return () => { ativo = false }
   }, [workspaceId, loadingWorkspace, erroWorkspace])
 
   useEffect(() => {
     if (loadingWorkspace || erroWorkspace || loadingCfg || !workspaceId) return
+    let ativo = true
 
     const hoje = localISODate(new Date())
     const limite = somarDiasISO(hoje, prazo)
@@ -1188,10 +1279,17 @@ export default function Avisos() {
       .neq('status', 'pago')
       .lte('vencimento', limite)
       .order('vencimento')
-      .then(({ data }) => {
-        setLancamentosPrevia(data ?? [])
+      .then(({ data, error }) => {
+        if (!ativo) return
+        if (error) {
+          setErroCarregamento('Não foi possível carregar a prévia dos avisos.')
+          setLancamentosPrevia([])
+        } else {
+          setLancamentosPrevia(data ?? [])
+        }
         setLoadingPrevia(false)
       })
+    return () => { ativo = false }
   }, [workspaceId, loadingWorkspace, erroWorkspace, loadingCfg, prazo])
 
   async function handleSalvarAlertas() {
@@ -1258,6 +1356,11 @@ export default function Avisos() {
 
   return (
     <div className="space-y-5">
+      {erroCarregamento && (
+        <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-600">
+          {erroCarregamento}
+        </p>
+      )}
       <div className="flex flex-col gap-2 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -1267,7 +1370,9 @@ export default function Avisos() {
             Avisos e cadastros
           </h1>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">
-            Configure alertas, conexão Telegram e listas auxiliares usadas no controle financeiro.
+            {podeAdministrar
+              ? 'Configure alertas, conexão Telegram e listas auxiliares usadas no controle financeiro.'
+              : 'Consulte os próximos avisos e o histórico financeiro do espaço.'}
           </p>
         </div>
         <div className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm shadow-slate-200/40">
@@ -1280,25 +1385,27 @@ export default function Avisos() {
 
         {/* ── Coluna esquerda: titulares + configurações ── */}
         <div className="space-y-4">
-          <SecaoTitulares titulares={titulares} setTitulares={setTitulares} />
-          <SecaoTelegram />
-          <SecaoConfiguracaoAlertas
-            config={alertasConfig}
-            setConfig={setAlertasConfig}
-            frequencia={frequenciaAlertas}
-            setFrequencia={setFrequenciaAlertas}
-            onSalvar={handleSalvarAlertas}
-            salvando={salvandoAlertas}
-            feedback={feedbackAlertas}
-            erro={erroAlertas}
-          />
+          {podeAdministrar && <SecaoTitulares titulares={titulares} setTitulares={setTitulares} />}
+          {podeAdministrar && <SecaoTelegram />}
+          {podeAdministrar && (
+            <SecaoConfiguracaoAlertas
+              config={alertasConfig}
+              setConfig={setAlertasConfig}
+              frequencia={frequenciaAlertas}
+              setFrequencia={setFrequenciaAlertas}
+              onSalvar={handleSalvarAlertas}
+              salvando={salvandoAlertas}
+              feedback={feedbackAlertas}
+              erro={erroAlertas}
+            />
+          )}
           <SecaoPreviaAviso lancamentos={lancamentosPrevia} loading={loadingPrevia} />
         </div>
 
         {/* ── Coluna direita: categorias + histórico + contas a fazer ── */}
         <div className="space-y-4">
 
-          <SecaoCategorias categorias={categorias} setCategorias={setCategorias} />
+          {podeAdministrar && <SecaoCategorias categorias={categorias} setCategorias={setCategorias} />}
 
           {/* Histórico de alterações */}
           <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-sm shadow-slate-200/40">

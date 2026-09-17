@@ -3,7 +3,8 @@ import { X, ChevronLeft, Plus, Loader2, Tag } from 'lucide-react'
 import * as LucideIcons from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
-import { localISODate, calcularStatus } from '../lib/utils'
+import { localISODate } from '../lib/utils'
+import { gerarLancamentosIniciais } from '../lib/recorrencias'
 import ModalFormCentro from './ModalFormCentro'
 
 const ICONE_KEYS = ['Droplets', 'Zap', 'Flame', 'Wifi', 'Shield', 'Home', 'CreditCard', 'Building2', 'Car', 'Smartphone', 'Package']
@@ -58,21 +59,32 @@ export default function ModalCadastroConta({ dia, currentMonth, onClose, onSalvo
   const overlayRef = useRef(null)
   const novaCatInputRef = useRef(null)
   const salvandoCatRef = useRef(false)
+  const salvandoRef = useRef(false)
+  const requisicaoIdRef = useRef(crypto.randomUUID())
 
   const dataClicada = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), dia)
   const dataFormatada = `${dia} de ${NOMES_MESES[currentMonth.getMonth()]} de ${currentMonth.getFullYear()}`
 
   // Busca dados ao abrir
   useEffect(() => {
+    let ativo = true
     Promise.all([
       supabase.from('categorias').select('*').eq('workspace_id', workspaceId).order('nome'),
       supabase.from('titulares').select('*').eq('workspace_id', workspaceId).order('nome'),
       supabase.from('centros_custo').select('*').eq('workspace_id', workspaceId).eq('status', 'ativo').order('nome'),
-    ]).then(([{ data: cats }, { data: tits }, { data: centros }]) => {
-      setCategorias(cats ?? [])
-      setTitulares(tits ?? [])
-      setCentrosCusto(centros ?? [])
+    ]).then(([cats, tits, centros]) => {
+      if (!ativo) return
+      const erroBusca = cats.error || tits.error || centros.error
+      if (erroBusca) {
+        registrarErroDesenvolvimento('Erro ao carregar opções da conta:', erroBusca)
+        setErro('Não foi possível carregar categorias, titulares e imóveis.')
+        return
+      }
+      setCategorias(cats.data ?? [])
+      setTitulares(tits.data ?? [])
+      setCentrosCusto(centros.data ?? [])
     })
+    return () => { ativo = false }
   }, [workspaceId])
 
   // Foca input ao ativar criação inline
@@ -123,39 +135,9 @@ export default function ModalCadastroConta({ dia, currentMonth, onClose, onSalvo
     setIconeNovaCategoria(ICONE_KEYS[0])
   }
 
-  // Monta lançamentos conforme recorrência, com status calculado por data
-  function buildLancamentos(contaId, valor) {
-    const base = dataClicada
-    if (form.recorrencia === 'uma_vez') {
-      const vencimento = localISODate(base)
-      return [{ conta_id: contaId, valor, vencimento, status: calcularStatus(vencimento), workspace_id: workspaceId }]
-    }
-    if (form.recorrencia === 'mensal') {
-      return Array.from({ length: 12 }, (_, i) => {
-        const d = new Date(base.getFullYear(), base.getMonth() + i, dia)
-        const vencimento = localISODate(d)
-        return { conta_id: contaId, valor, vencimento, status: calcularStatus(vencimento), workspace_id: workspaceId }
-      })
-    }
-    // anual: até 6 iterações, sempre inclui o ano atual, anos futuros só se data >= hoje
-    const mesVenc = base.getMonth()
-    const hoje = new Date()
-    hoje.setHours(0, 0, 0, 0)
-    const resultado = []
-    let primeiroAdicionado = false
-    for (let i = 0; i < 6; i++) {
-      const d = new Date(hoje.getFullYear() + i, mesVenc, dia)
-      d.setHours(0, 0, 0, 0)
-      if (!primeiroAdicionado || d >= hoje) {
-        const vencimento = localISODate(d)
-        resultado.push({ conta_id: contaId, valor, vencimento, status: calcularStatus(vencimento), workspace_id: workspaceId })
-        primeiroAdicionado = true
-      }
-    }
-    return resultado
-  }
-
   async function handleSalvar() {
+    if (salvandoRef.current) return
+
     setErro('')
     const nome = categoriaSelecionada?.nome?.trim() ?? ''
     const valor = Number(form.valor)
@@ -184,31 +166,36 @@ export default function ModalCadastroConta({ dia, currentMonth, onClose, onSalvo
       return
     }
 
+    salvandoRef.current = true
     setSalvando(true)
 
     try {
-      const contaPayload = {
-        nome,
-        categoria_id: categoriaSelecionada.id,
-        centro_id: centroIdFinal,
-        titular_id: form.titular_id || null,
+      const lancamentosPayload = gerarLancamentosIniciais({
         recorrencia: form.recorrencia,
-        dia_vencimento: diaVencimento,
-        mes_vencimento: mesVencimento,
-        valor_referencia: valor,
-        status_contrato: 'ativo',
-        workspace_id: workspaceId,
-      }
+        anoBase: dataClicada.getFullYear(),
+        mesBase: dataClicada.getMonth() + 1,
+        diaBase: diaVencimento,
+        valor,
+        dataUnica: localISODate(dataClicada),
+      })
 
-      const { data: conta, error: erroConta } = await supabase
-        .from('contas')
-        .insert(contaPayload)
-        .select()
-        .single()
+      const { data: resultado, error: erroCriacao } = await supabase.rpc('criar_conta_com_lancamentos', {
+        p_workspace_id: workspaceId,
+        p_requisicao_id: requisicaoIdRef.current,
+        p_nome: nome,
+        p_categoria_id: categoriaSelecionada.id,
+        p_centro_id: centroIdFinal,
+        p_titular_id: form.titular_id || null,
+        p_recorrencia: form.recorrencia,
+        p_dia_vencimento: diaVencimento,
+        p_mes_vencimento: mesVencimento,
+        p_valor_referencia: valor,
+        p_status_contrato: 'ativo',
+        p_lancamentos: lancamentosPayload,
+      })
 
-      if (erroConta) throw erroConta
+      if (erroCriacao) throw erroCriacao
 
-      const lancamentosPayload = buildLancamentos(conta.id, valor)
       const selectLancamento = `
         *,
         contas:contas!lancamentos_workspace_conta_fkey(
@@ -219,38 +206,20 @@ export default function ModalCadastroConta({ dia, currentMonth, onClose, onSalvo
         )
       `
 
-      try {
-        const novosLancamentos = await Promise.all(lancamentosPayload.map(async (novoLancamento) => {
-          const { data, error } = await supabase
-            .from('lancamentos')
-            .insert(novoLancamento)
-            .select(selectLancamento)
-            .single()
+      const { data: novosLancamentos, error: erroBusca } = await supabase
+        .from('lancamentos')
+        .select(selectLancamento)
+        .eq('workspace_id', workspaceId)
+        .eq('conta_id', resultado.conta_id)
+        .order('vencimento')
 
-          if (!error) return data
-          if (error.code !== '23505') throw error
-
-          const { data: existente, error: erroBusca } = await supabase
-            .from('lancamentos')
-            .select(selectLancamento)
-            .eq('workspace_id', workspaceId)
-            .eq('conta_id', novoLancamento.conta_id)
-            .eq('vencimento', novoLancamento.vencimento)
-            .single()
-
-          if (erroBusca) throw erroBusca
-          return existente
-        }))
-
-        onSalvo(novosLancamentos)
-      } catch (error) {
-        registrarErroDesenvolvimento('Erro ao gerar lançamentos da conta criada:', error)
-        setErro('A conta foi criada, mas não foi possível gerar os lançamentos. Abra a conta e revise os lançamentos.')
-      }
+      if (erroBusca) throw erroBusca
+      onSalvo(novosLancamentos ?? [])
     } catch (error) {
       registrarErroDesenvolvimento('Erro ao criar conta:', error)
       setErro('Não foi possível criar a conta. Confira os dados e tente novamente.')
     } finally {
+      salvandoRef.current = false
       setSalvando(false)
     }
   }

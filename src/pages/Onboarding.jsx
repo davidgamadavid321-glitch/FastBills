@@ -46,6 +46,7 @@ export default function Onboarding() {
   const navigate = useNavigate()
   const { workspaceId, loadingWorkspace, erroWorkspace } = useWorkspace()
   const [loading, setLoading] = useState(true)
+  const [erroCarregamento, setErroCarregamento] = useState('')
 
   const [centros,  setCentros]  = useState([])
   const [titulares, setTitulares] = useState([])
@@ -66,17 +67,29 @@ export default function Onboarding() {
 
   useEffect(() => {
     if (loadingWorkspace || erroWorkspace || !workspaceId) return
+    let ativo = true
+    setLoading(true)
+    setErroCarregamento('')
 
     Promise.all([
       supabase.from('centros_custo').select('id, nome, tipo').eq('workspace_id', workspaceId).order('nome'),
       supabase.from('titulares').select('id, nome, cor').eq('workspace_id', workspaceId).order('nome'),
       supabase.from('categorias').select('id, nome, icone').eq('workspace_id', workspaceId).order('nome'),
     ]).then(([c, t, cat]) => {
+      if (!ativo) return
+      const erro = c.error || t.error || cat.error
+      if (erro) {
+        if (import.meta.env.DEV) console.error('Erro ao carregar onboarding:', erro)
+        setErroCarregamento('Não foi possível carregar os dados iniciais. Tente novamente.')
+        setLoading(false)
+        return
+      }
       setCentros(c.data ?? [])
       setTitulares(t.data ?? [])
       setCategorias(cat.data ?? [])
       setLoading(false)
     })
+    return () => { ativo = false }
   }, [workspaceId, loadingWorkspace, erroWorkspace])
 
   const podeComecar = centros.length > 0 || titulares.length > 0 || categorias.length > 0
@@ -164,6 +177,14 @@ export default function Onboarding() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
         <p className="text-sm text-red-500 text-center">{erroWorkspace}</p>
+      </div>
+    )
+  }
+
+  if (erroCarregamento) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+        <p className="text-sm text-red-500 text-center">{erroCarregamento}</p>
       </div>
     )
   }

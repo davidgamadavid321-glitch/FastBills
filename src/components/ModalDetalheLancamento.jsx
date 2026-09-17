@@ -3,7 +3,9 @@ import { X, Upload, FileText, CheckCircle, Loader2, Tag, Trash2, RefreshCw } fro
 import * as LucideIcons from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useWorkspace } from '../contexts/WorkspaceContext'
-import { formatarMoeda as formatarValor, localISODate } from '../lib/utils'
+import { formatarMoeda as formatarValor, localISODate, statusEfetivo } from '../lib/utils'
+import { useHojeISO } from '../hooks/useHojeISO'
+import { notificarLancamentosAtualizados } from '../lib/lancamentos'
 
 // ── Utilitários ──────────────────────────────────────────────
 
@@ -14,13 +16,6 @@ function formatarVencimento(iso = '') {
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
   ]
   return `Dia ${parseInt(d, 10)} de ${meses[parseInt(m, 10) - 1]} ${y}`
-}
-
-function statusEfetivo(vencimento, status) {
-  if (status === 'pago') return 'pago'
-  if (status === 'vencido') return 'vencido'
-  if (vencimento === localISODate(new Date())) return 'hoje'
-  return 'pendente'
 }
 
 // ── Mapas de estilo ──────────────────────────────────────────
@@ -71,7 +66,8 @@ function InfoLinha({ label, children }) {
 // ── Componente principal ─────────────────────────────────────
 
 export default function ModalDetalheLancamento({ lancamento: inicial, onClose, onAtualizado, onExcluido }) {
-  const { workspaceId } = useWorkspace()
+  const { workspaceId, podeAdministrar } = useWorkspace()
+  const hojeISO = useHojeISO()
   const [lancamento, setLancamento] = useState(inicial)
   const [confirmando, setConfirmando] = useState(false)
   const [marcandoPago, setMarcandoPago] = useState(false)
@@ -90,7 +86,7 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
   const overlayRef = useRef(null)
   const inputPDFRef = useRef(null)
 
-  const s = statusEfetivo(lancamento.vencimento, lancamento.status)
+  const s = statusEfetivo(lancamento.vencimento, lancamento.status, hojeISO)
   const titular = titularDoLancamento(lancamento)
   const cor = titular?.cor
 
@@ -102,11 +98,18 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
 
   async function handleAbrirTroca() {
     setLoadingTitulares(true)
-    const { data } = await supabase
+    setErro('')
+    const { data, error } = await supabase
       .from('titulares')
       .select('*')
       .eq('workspace_id', workspaceId)
       .order('nome')
+    if (error) {
+      if (import.meta.env.DEV) console.error('Erro ao carregar titulares:', error)
+      setErro('Não foi possível carregar os titulares.')
+      setLoadingTitulares(false)
+      return
+    }
     setTitularesDisponiveis(data ?? [])
     const ctAtivo = lancamento.contas?.contas_titulares?.find(ct => ct.fim === null)
     setNovoTitularId(ctAtivo?.titular_id ?? lancamento.contas?.titular_id ?? '')
@@ -181,15 +184,18 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
     setExcluindo(true)
 
     try {
-      const { error } = await supabase
-        .from('lancamentos')
-        .delete()
-        .eq('id', lancamento.id)
-        .eq('workspace_id', workspaceId)
+      const { error } = await supabase.rpc('excluir_lancamentos_conta', {
+        p_workspace_id: workspaceId,
+        p_conta_id: lancamento.conta_id,
+        p_lancamento_id: lancamento.id,
+        p_hoje: localISODate(new Date()),
+        p_todos_futuros: false,
+      })
 
       if (error) throw error
 
       onExcluido?.(lancamento.id)
+      notificarLancamentosAtualizados()
       onClose()
     } catch (error) {
       if (import.meta.env.DEV) console.error('Erro ao excluir lançamento:', error)
@@ -204,21 +210,18 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
 
     try {
       const hoje = localISODate(new Date())
-      const { error: e1 } = await supabase
-        .from('lancamentos')
-        .delete()
-        .eq('conta_id', lancamento.conta_id)
-        .eq('workspace_id', workspaceId)
-        .gte('vencimento', hoje)
-      const { error: e2 } = await supabase
-        .from('lancamentos')
-        .delete()
-        .eq('id', lancamento.id)
-        .eq('workspace_id', workspaceId)
+      const { error } = await supabase.rpc('excluir_lancamentos_conta', {
+        p_workspace_id: workspaceId,
+        p_conta_id: lancamento.conta_id,
+        p_lancamento_id: lancamento.id,
+        p_hoje: hoje,
+        p_todos_futuros: true,
+      })
 
-      if (e1 || e2) throw e1 || e2
+      if (error) throw error
 
       onExcluido?.(lancamento.id)
+      notificarLancamentosAtualizados()
       onClose()
     } catch (error) {
       if (import.meta.env.DEV) console.error('Erro ao excluir lançamentos:', error)
@@ -278,11 +281,22 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
         .update({ pdf_url: caminho })
         .eq('id', lancamento.id)
         .eq('workspace_id', workspaceId)
+        .select('id')
+        .single()
 
       if (erroUpdate) {
         if (import.meta.env.DEV) console.error('Erro ao salvar comprovante:', erroUpdate)
         if (lancamento.pdf_url !== caminho) {
-          await supabase.storage.from('comprovantes').remove([caminho])
+          // Storage delete e' admin-only na matriz de papéis (BUG-12); um member
+          // não conseguiria limpar o próprio upload órfão diretamente. A Edge
+          // Function roda com service role e só remove arquivo comprovadamente
+          // órfão (nunca um comprovante ativo), sem afrouxar a policy do bucket.
+          const { error: erroLimpeza } = await supabase.functions.invoke('limpar-comprovante-orfao', {
+            body: { workspace_id: workspaceId, lancamento_id: lancamento.id, caminho },
+          })
+          if (erroLimpeza && import.meta.env.DEV) {
+            console.error('Erro ao limpar comprovante órfão:', erroLimpeza)
+          }
         }
         setErro('O comprovante foi enviado, mas não foi possível salvar. Tente novamente.')
         return
@@ -335,7 +349,7 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
 
   // ── Confirmar pagamento ──
 
-  async function handleConfirmarPagamento() {
+  async function atualizarPagamento(novoStatus) {
     setMarcandoPago(true)
     setErro('')
 
@@ -344,35 +358,37 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
       const hoje = localISODate(new Date())
       const alteradoPor = user?.user_metadata?.full_name || user?.email || ''
 
-      const { error } = await supabase
+      const alteradoEm = new Date().toISOString()
+      const { data, error } = await supabase
         .from('lancamentos')
         .update({
-          status: 'pago',
-          data_pagamento: hoje,
+          status: novoStatus,
+          data_pagamento: novoStatus === 'pago' ? hoje : null,
           alterado_por: alteradoPor,
-          alterado_em: new Date().toISOString(),
+          alterado_em: alteradoEm,
         })
         .eq('id', lancamento.id)
         .eq('workspace_id', workspaceId)
+        .select()
+        .single()
 
       if (error) throw error
 
-      const atualizado = {
-        ...lancamento,
-        status: 'pago',
-        data_pagamento: hoje,
-        alterado_por: alteradoPor,
-        alterado_em: new Date().toISOString(),
-      }
+      const atualizado = { ...lancamento, ...data }
 
+      notificarLancamentosAtualizados()
       onAtualizado(atualizado)
       onClose()
     } catch (error) {
-      if (import.meta.env.DEV) console.error('Erro ao marcar lançamento como pago:', error)
-      setErro('Não foi possível marcar este lançamento como pago. Tente novamente.')
+      if (import.meta.env.DEV) console.error('Erro ao atualizar pagamento:', error)
+      setErro('Não foi possível atualizar este lançamento. Tente novamente.')
     } finally {
       setMarcandoPago(false)
     }
+  }
+
+  function handleConfirmarPagamento() {
+    return atualizarPagamento('pago')
   }
 
   return (
@@ -418,7 +434,7 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
 
           {/* Informações */}
           <div className="bg-slate-50 rounded-2xl px-4 py-1">
-            {trocandoTitular ? (
+            {podeAdministrar && trocandoTitular ? (
               <div className="py-3 border-b border-slate-100 space-y-2.5">
                 <p className="text-xs font-semibold text-slate-400">Titular</p>
                 <select
@@ -457,17 +473,19 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
                 <span className="text-sm font-semibold truncate" style={{ color: cor ?? '#334155' }}>
                   {titular?.nome ?? '—'}
                 </span>
-                <button
-                  onClick={handleAbrirTroca}
-                  disabled={loadingTitulares}
-                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-700 transition-colors disabled:opacity-50 shrink-0 ml-1"
-                  title="Trocar titular"
-                >
-                  {loadingTitulares
-                    ? <Loader2 size={12} className="animate-spin" />
-                    : <RefreshCw size={12} />
-                  }
-                </button>
+                {podeAdministrar && (
+                  <button
+                    onClick={handleAbrirTroca}
+                    disabled={loadingTitulares}
+                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-700 transition-colors disabled:opacity-50 shrink-0 ml-1"
+                    title="Trocar titular"
+                  >
+                    {loadingTitulares
+                      ? <Loader2 size={12} className="animate-spin" />
+                      : <RefreshCw size={12} />
+                    }
+                  </button>
+                )}
               </InfoLinha>
             )}
 
@@ -616,9 +634,19 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
               )
             )}
 
+            {s === 'pago' && (
+              <button
+                onClick={() => atualizarPagamento('pendente')}
+                disabled={marcandoPago}
+                className="w-full rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
+              >
+                {marcandoPago ? 'Salvando...' : 'Voltar para pendente'}
+              </button>
+            )}
+
 
             {/* Excluir lançamento */}
-            {etapaExclusao === null && (
+            {podeAdministrar && etapaExclusao === null && (
               <button
                 onClick={handleIniciarExclusao}
                 className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-red-500 hover:text-red-700 transition-colors"
@@ -628,7 +656,7 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
               </button>
             )}
 
-            {etapaExclusao === 'confirmar' && (
+            {podeAdministrar && etapaExclusao === 'confirmar' && (
               <div className="bg-red-50 border border-red-100 rounded-2xl p-4 space-y-3">
                 <p className="text-sm font-medium text-slate-900 text-center leading-snug">
                   Excluir este lançamento? Esta ação não pode ser desfeita.
@@ -653,7 +681,7 @@ export default function ModalDetalheLancamento({ lancamento: inicial, onClose, o
               </div>
             )}
 
-            {etapaExclusao === 'escopo' && (
+            {podeAdministrar && etapaExclusao === 'escopo' && (
               <div className="bg-red-50 border border-red-100 rounded-2xl p-4 space-y-3">
                 <p className="text-sm font-medium text-slate-900 text-center leading-snug">
                   Excluir só este ou todos os futuros?

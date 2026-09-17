@@ -12,6 +12,8 @@ import {
 import { LayoutDashboard, Building2, FileText, BarChart2, Bell, Settings } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import { WorkspaceProvider, useWorkspace } from './contexts/WorkspaceContext'
+import { useHojeISO } from './hooks/useHojeISO'
+import { EVENTO_LANCAMENTOS_ATUALIZADOS } from './lib/lancamentos'
 import Dashboard from './pages/Dashboard'
 import Imoveis from './pages/Imoveis'
 import Contas from './pages/Contas'
@@ -174,43 +176,74 @@ function Layout({ user, vencidos }) {
 function AppRoutes({ user, vencidos, setVencidos }) {
   const navigate = useNavigate()
   const lastCheckedUserRef = useRef(null)
-  const { workspaceId, loadingWorkspace, erroWorkspace } = useWorkspace()
+  const { workspaceId, podeAdministrar, loadingWorkspace, erroWorkspace } = useWorkspace()
+  const hoje = useHojeISO()
+  const [erroInicializacao, setErroInicializacao] = useState('')
 
   useEffect(() => {
     if (!user || loadingWorkspace || erroWorkspace || !workspaceId || lastCheckedUserRef.current === `${user.id}:${workspaceId}`) return
-    lastCheckedUserRef.current = `${user.id}:${workspaceId}`
+    let ativo = true
+    setErroInicializacao('')
 
     Promise.all([
       supabase.from('centros_custo').select('id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
       supabase.from('titulares').select('id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
       supabase.from('categorias').select('id', { count: 'exact', head: true }).eq('workspace_id', workspaceId),
     ]).then(([c, t, cat]) => {
+      if (!ativo) return
+      const erro = c.error || t.error || cat.error
+      if (erro) {
+        if (import.meta.env.DEV) console.error('Erro ao verificar onboarding:', erro)
+        setErroInicializacao('Não foi possível carregar os dados do workspace. Recarregue a página.')
+        return
+      }
+      lastCheckedUserRef.current = `${user.id}:${workspaceId}`
       const isEmpty =
         (c.count ?? 0) === 0 &&
         (t.count ?? 0) === 0 &&
         (cat.count ?? 0) === 0
-      if (isEmpty) navigate('/onboarding', { replace: true })
+      if (isEmpty && podeAdministrar) navigate('/onboarding', { replace: true })
     })
-  }, [user, workspaceId, loadingWorkspace, erroWorkspace])
+    return () => { ativo = false }
+  }, [user, workspaceId, podeAdministrar, loadingWorkspace, erroWorkspace, navigate])
 
   useEffect(() => {
     if (!user || !workspaceId) {
       setVencidos(0)
       return
     }
+    let ativo = true
 
-    supabase
-      .from('lancamentos')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'vencido')
-      .eq('workspace_id', workspaceId)
-      .then(({ count }) => setVencidos(count ?? 0))
-  }, [user, workspaceId, setVencidos])
+    async function buscarVencidos() {
+      const { count, error } = await supabase
+        .from('lancamentos')
+        .select('id', { count: 'exact', head: true })
+        .neq('status', 'pago')
+        .lt('vencimento', hoje)
+        .eq('workspace_id', workspaceId)
+      if (ativo && !error) setVencidos(count ?? 0)
+    }
+
+    buscarVencidos()
+    window.addEventListener(EVENTO_LANCAMENTOS_ATUALIZADOS, buscarVencidos)
+    return () => {
+      ativo = false
+      window.removeEventListener(EVENTO_LANCAMENTOS_ATUALIZADOS, buscarVencidos)
+    }
+  }, [user, workspaceId, hoje, setVencidos])
 
   if (user && erroWorkspace) {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-50 p-4">
         <span className="text-red-500 text-sm text-center">{erroWorkspace}</span>
+      </div>
+    )
+  }
+
+  if (user && erroInicializacao) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-slate-50 p-4">
+        <span className="text-red-500 text-sm text-center">{erroInicializacao}</span>
       </div>
     )
   }
@@ -231,7 +264,7 @@ function AppRoutes({ user, vencidos, setVencidos }) {
       />
       <Route
         path="/onboarding"
-        element={user ? <Onboarding /> : <Navigate to="/login" replace />}
+        element={user && podeAdministrar ? <Onboarding /> : <Navigate to={user ? '/' : '/login'} replace />}
       />
       <Route
         element={
